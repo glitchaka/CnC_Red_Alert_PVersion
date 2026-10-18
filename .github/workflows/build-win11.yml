@@ -12,8 +12,8 @@ permissions:
 
 jobs:
   build-win11:
-    runs-on: windows-latest
-    timeout-minutes: 60
+    runs-on: windows-2022
+    timeout-minutes: 45
 
     steps:
       - name: Checkout this repository
@@ -25,54 +25,56 @@ jobs:
           repository: TheAssemblyArmada/Vanilla-Conquer
           ref: ce83b59edd99cccac6cebaae054ca04962c744b7
           path: vanilla-conquer
+          submodules: 'true'
+          fetch-depth: 0
 
-      - name: Install SDL2 and OpenAL
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1.13.0
+        with:
+          arch: x64
+
+      - name: Install official prebuilt dependencies
         shell: pwsh
+        working-directory: vanilla-conquer
         run: |
-          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install sdl2:x64-windows openal-soft:x64-windows
+          Invoke-WebRequest -Uri https://www.libsdl.org/release/SDL2-devel-2.0.12-VC.zip -OutFile SDL2-devel.zip
+          Invoke-WebRequest -Uri https://github.com/ninja-build/ninja/releases/download/v1.10.1/ninja-win.zip -OutFile $Env:TEMP\ninja-win.zip
+          Invoke-WebRequest -SkipCertificateCheck -Uri https://openal-soft.org/openal-binaries/openal-soft-1.21.0-bin.zip -OutFile openal-soft-1.21.0-bin.zip
+          Expand-Archive SDL2-devel.zip -DestinationPath .
+          Expand-Archive $Env:TEMP\ninja-win.zip -DestinationPath $Env:TEMP\ninja
+          Expand-Archive openal-soft-1.21.0-bin.zip -DestinationPath .
+          echo "$Env:TEMP\ninja" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          ninja --version
+          $magickPath = Split-Path -Path (Get-Command magick).Path -Parent
+          echo "MAGICK_PATH=$magickPath" >> $env:GITHUB_ENV
 
-      - name: Configure Windows 11 x64 build
+      - name: Build Red Alert x64
         shell: pwsh
+        working-directory: vanilla-conquer
+        env:
+          CMAKE_FIND_ROOT_PATH: "SDL2-2.0.12;openal-soft-1.21.0-bin;${{ env.MAGICK_PATH }}"
+          VC_CXX_FLAGS: "/Zc:strictStrings;-wd4244;-wd4018;-wd4291;-wd4101;-wd4267;-wd4200"
         run: |
-          cmake -S vanilla-conquer -B vanilla-conquer/build-win11 -G "Visual Studio 17 2022" -A x64 `
-            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
-            -DBUILD_VANILLATD=OFF `
-            -DBUILD_VANILLARA=ON `
-            -DBUILD_REMASTERTD=OFF `
-            -DBUILD_REMASTERRA=OFF `
-            -DMAP_EDITORTD=OFF `
-            -DMAP_EDITORRA=OFF `
-            -DBUILD_TOOLS=OFF `
-            -DSDL2=ON `
-            -DOPENAL=ON `
-            -DDSOUND=OFF `
-            -DDDRAW=OFF
+          New-Item -Path "build/release/RelWithDebInfo" -ItemType Directory -Force | Out-Null
+          Copy-Item -Path "SDL2-2.0.12\lib\x64\SDL2.dll" -Destination build/release/RelWithDebInfo
+          cmake --workflow --preset release
 
-      - name: Build vanillara.exe
-        shell: pwsh
-        run: cmake --build vanilla-conquer/build-win11 --config Release --target vanillara --parallel
-
-      - name: Collect portable Windows files
+      - name: Collect portable Windows 11 build
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $exe = Get-ChildItem -Path vanilla-conquer/build-win11 -Recurse -Filter vanillara.exe | Select-Object -First 1
-          if (-not $exe) { throw 'vanillara.exe was not produced' }
-          Copy-Item $exe.FullName dist\RedAlert-Win11.exe
-
-          $sdl = Get-ChildItem -Path "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" -Recurse -Filter SDL2.dll | Select-Object -First 1
-          if ($sdl) { Copy-Item $sdl.FullName dist\SDL2.dll }
-
-          $openal = Get-ChildItem -Path "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" -Recurse -Filter OpenAL32.dll | Select-Object -First 1
-          if ($openal) { Copy-Item $openal.FullName dist\OpenAL32.dll }
-
+          $exe = "vanilla-conquer\build\release\RelWithDebInfo\vanillara.exe"
+          if (-not (Test-Path $exe)) { throw 'vanillara.exe was not produced' }
+          Copy-Item $exe dist\vanillara.exe
+          Copy-Item $exe dist\RedAlert-Win11.exe
+          Copy-Item "vanilla-conquer\SDL2-2.0.12\lib\x64\SDL2.dll" dist\SDL2.dll
+          Copy-Item "vanilla-conquer\openal-soft-1.21.0-bin\bin\Win64\soft_oal.dll" dist\OpenAL32.dll
           @'
-          Red Alert - Windows 11 build
-          ============================
-          This executable is a modern Windows build of the Red Alert engine using the maintained Vanilla Conquer port.
-          It does not contain copyrighted game data. Place RedAlert-Win11.exe, SDL2.dll and OpenAL32.dll in a compatible legacy Red Alert game-data directory.
+          Red Alert - Windows 11 x64 build
+          =================================
+          Modern Windows build of the Red Alert engine using the maintained Vanilla Conquer port.
+          No copyrighted game data is included. Put the EXE and both DLLs in a compatible legacy Red Alert data directory.
           '@ | Set-Content -Encoding UTF8 dist\README-WIN11.txt
-
           Compress-Archive -Path dist\* -DestinationPath RedAlert-Win11-x64.zip -Force
 
       - name: Upload Windows 11 executable
