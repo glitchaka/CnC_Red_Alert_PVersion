@@ -1,0 +1,85 @@
+name: Build Red Alert for Windows 11
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/build-win11.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-win11:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v4
+
+      - name: Checkout maintained Red Alert engine port
+        uses: actions/checkout@v4
+        with:
+          repository: TheAssemblyArmada/Vanilla-Conquer
+          ref: ce83b59edd99cccac6cebaae054ca04962c744b7
+          path: vanilla-conquer
+
+      - name: Install SDL2 and OpenAL
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install sdl2:x64-windows openal-soft:x64-windows
+
+      - name: Configure Windows 11 x64 build
+        shell: pwsh
+        run: |
+          cmake -S vanilla-conquer -B vanilla-conquer/build-win11 -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DBUILD_VANILLATD=OFF `
+            -DBUILD_VANILLARA=ON `
+            -DBUILD_REMASTERTD=OFF `
+            -DBUILD_REMASTERRA=OFF `
+            -DMAP_EDITORTD=OFF `
+            -DMAP_EDITORRA=OFF `
+            -DBUILD_TOOLS=OFF `
+            -DSDL2=ON `
+            -DOPENAL=ON `
+            -DDSOUND=OFF `
+            -DDDRAW=OFF
+
+      - name: Build vanillara.exe
+        shell: pwsh
+        run: cmake --build vanilla-conquer/build-win11 --config Release --target vanillara --parallel
+
+      - name: Collect portable Windows files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $exe = Get-ChildItem -Path vanilla-conquer/build-win11 -Recurse -Filter vanillara.exe | Select-Object -First 1
+          if (-not $exe) { throw 'vanillara.exe was not produced' }
+          Copy-Item $exe.FullName dist\RedAlert-Win11.exe
+
+          $sdl = Get-ChildItem -Path "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" -Recurse -Filter SDL2.dll | Select-Object -First 1
+          if ($sdl) { Copy-Item $sdl.FullName dist\SDL2.dll }
+
+          $openal = Get-ChildItem -Path "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" -Recurse -Filter OpenAL32.dll | Select-Object -First 1
+          if ($openal) { Copy-Item $openal.FullName dist\OpenAL32.dll }
+
+          @'
+          Red Alert - Windows 11 build
+          ============================
+          This executable is a modern Windows build of the Red Alert engine using the maintained Vanilla Conquer port.
+          It does not contain copyrighted game data. Place RedAlert-Win11.exe, SDL2.dll and OpenAL32.dll in a compatible legacy Red Alert game-data directory.
+          '@ | Set-Content -Encoding UTF8 dist\README-WIN11.txt
+
+          Compress-Archive -Path dist\* -DestinationPath RedAlert-Win11-x64.zip -Force
+
+      - name: Upload Windows 11 executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: RedAlert-Win11-x64
+          path: |
+            dist/*
+            RedAlert-Win11-x64.zip
+          if-no-files-found: error
