@@ -78,8 +78,9 @@
 //#pragma off(unreferenced)
 
 
-// Fix deficiency in Watcom so that true/false will be defined.
-#ifndef __BORLANDC__
+// Fix deficiency in legacy Watcom so that true/false will be defined.
+// Modern C++ compilers (MSVC/GCC/Clang) provide bool, true and false as keywords.
+#if defined(__WATCOMC__) && !defined(__BORLANDC__)
 #ifndef TRUE_FALSE_DEFINED
 #define TRUE_FALSE_DEFINED
 enum {false=0,true=1};
