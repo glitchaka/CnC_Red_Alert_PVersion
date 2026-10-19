@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 namespace ra {
 namespace {
@@ -68,10 +69,17 @@ struct Engine::Impl {
         if (config.vsync) {
             SDL_SetRenderVSync(renderer, 1);
         }
+
+        textures.push_back(nullptr); // id 0 is always invalid.
     }
 
     ~Impl()
     {
+        for (SDL_Texture* texture : textures) {
+            if (texture) {
+                SDL_DestroyTexture(texture);
+            }
+        }
         if (renderer) {
             SDL_DestroyRenderer(renderer);
         }
@@ -91,6 +99,7 @@ struct Engine::Impl {
     float delta{0.0f};
     std::array<bool, keyIndex(Key::Count)> currentKeys{};
     std::array<bool, keyIndex(Key::Count)> previousKeys{};
+    std::vector<SDL_Texture*> textures;
 };
 
 Engine::Engine(EngineConfig config)
@@ -208,6 +217,65 @@ void Engine::drawRect(Rect rect, Color color)
     SDL_SetRenderDrawColor(impl_->renderer, color.r, color.g, color.b, color.a);
     const SDL_FRect sdlRect{rect.x, rect.y, rect.w, rect.h};
     SDL_RenderRect(impl_->renderer, &sdlRect);
+}
+
+Texture Engine::createTextureRGBA(const unsigned char* rgba, int width, int height)
+{
+    if (!rgba || width <= 0 || height <= 0) {
+        throw std::runtime_error("createTextureRGBA received invalid image data");
+    }
+
+    SDL_Texture* texture = SDL_CreateTexture(
+        impl_->renderer,
+        SDL_PIXELFORMAT_RGBA32,
+        SDL_TEXTUREACCESS_STATIC,
+        width,
+        height);
+    if (!texture) {
+        throw std::runtime_error(std::string("SDL_CreateTexture failed: ") + SDL_GetError());
+    }
+
+    if (!SDL_UpdateTexture(texture, nullptr, rgba, width * 4)) {
+        const std::string error = SDL_GetError();
+        SDL_DestroyTexture(texture);
+        throw std::runtime_error(std::string("SDL_UpdateTexture failed: ") + error);
+    }
+
+    SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+    SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_LINEAR);
+
+    impl_->textures.push_back(texture);
+    return Texture{static_cast<std::uint32_t>(impl_->textures.size() - 1), width, height};
+}
+
+void Engine::destroyTexture(Texture& texture)
+{
+    if (!texture || texture.id >= impl_->textures.size()) {
+        texture = {};
+        return;
+    }
+
+    SDL_Texture*& native = impl_->textures[texture.id];
+    if (native) {
+        SDL_DestroyTexture(native);
+        native = nullptr;
+    }
+    texture = {};
+}
+
+void Engine::drawTexture(const Texture& texture, Rect destination)
+{
+    if (!texture || texture.id >= impl_->textures.size()) {
+        return;
+    }
+
+    SDL_Texture* native = impl_->textures[texture.id];
+    if (!native) {
+        return;
+    }
+
+    const SDL_FRect dst{destination.x, destination.y, destination.w, destination.h};
+    SDL_RenderTexture(impl_->renderer, native, nullptr, &dst);
 }
 
 const EngineConfig& Engine::config() const noexcept
