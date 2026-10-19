@@ -1,6 +1,7 @@
 #include <ra/Engine.h>
 
 #include <SDL3/SDL.h>
+#include <SDL3_image/SDL_image.h>
 
 #include <array>
 #include <chrono>
@@ -15,6 +16,11 @@ namespace {
 constexpr std::size_t keyIndex(Key key)
 {
     return static_cast<std::size_t>(key);
+}
+
+constexpr std::size_t mouseIndex(MouseButton button)
+{
+    return static_cast<std::size_t>(button);
 }
 
 SDL_Scancode toScancode(Key key)
@@ -34,6 +40,16 @@ SDL_Scancode toScancode(Key key)
     case Key::Count:  break;
     }
     return SDL_SCANCODE_UNKNOWN;
+}
+
+MouseButton fromSDLMouseButton(Uint8 button)
+{
+    switch (button) {
+    case SDL_BUTTON_LEFT:   return MouseButton::Left;
+    case SDL_BUTTON_MIDDLE: return MouseButton::Middle;
+    case SDL_BUTTON_RIGHT:  return MouseButton::Right;
+    default:                return MouseButton::Count;
+    }
 }
 
 } // namespace
@@ -97,8 +113,12 @@ struct Engine::Impl {
     bool sdlInitialized{false};
     bool running{false};
     float delta{0.0f};
+    float mouseX{0.0f};
+    float mouseY{0.0f};
     std::array<bool, keyIndex(Key::Count)> currentKeys{};
     std::array<bool, keyIndex(Key::Count)> previousKeys{};
+    std::array<bool, mouseIndex(MouseButton::Count)> currentMouse{};
+    std::array<bool, mouseIndex(MouseButton::Count)> previousMouse{};
     std::vector<SDL_Texture*> textures;
 };
 
@@ -120,6 +140,7 @@ int Engine::run(Game& game)
 
     while (impl_->running) {
         impl_->previousKeys = impl_->currentKeys;
+        impl_->previousMouse = impl_->currentMouse;
 
         SDL_Event event{};
         while (SDL_PollEvent(&event)) {
@@ -135,6 +156,20 @@ int Engine::run(Game& game)
                     if (toScancode(key) == event.key.scancode) {
                         impl_->currentKeys[i] = down;
                     }
+                }
+            }
+
+            if (event.type == SDL_EVENT_MOUSE_MOTION) {
+                impl_->mouseX = event.motion.x;
+                impl_->mouseY = event.motion.y;
+            }
+
+            if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN || event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
+                impl_->mouseX = event.button.x;
+                impl_->mouseY = event.button.y;
+                const MouseButton button = fromSDLMouseButton(event.button.button);
+                if (button != MouseButton::Count) {
+                    impl_->currentMouse[mouseIndex(button)] = event.type == SDL_EVENT_MOUSE_BUTTON_DOWN;
                 }
             }
         }
@@ -176,6 +211,34 @@ bool Engine::keyReleased(Key key) const
 {
     const auto index = keyIndex(key);
     return index < impl_->currentKeys.size() && !impl_->currentKeys[index] && impl_->previousKeys[index];
+}
+
+float Engine::mouseX() const
+{
+    return impl_->mouseX;
+}
+
+float Engine::mouseY() const
+{
+    return impl_->mouseY;
+}
+
+bool Engine::mouseDown(MouseButton button) const
+{
+    const auto index = mouseIndex(button);
+    return index < impl_->currentMouse.size() && impl_->currentMouse[index];
+}
+
+bool Engine::mousePressed(MouseButton button) const
+{
+    const auto index = mouseIndex(button);
+    return index < impl_->currentMouse.size() && impl_->currentMouse[index] && !impl_->previousMouse[index];
+}
+
+bool Engine::mouseReleased(MouseButton button) const
+{
+    const auto index = mouseIndex(button);
+    return index < impl_->currentMouse.size() && !impl_->currentMouse[index] && impl_->previousMouse[index];
 }
 
 int Engine::windowWidth() const
@@ -246,6 +309,30 @@ Texture Engine::createTextureRGBA(const unsigned char* rgba, int width, int heig
 
     impl_->textures.push_back(texture);
     return Texture{static_cast<std::uint32_t>(impl_->textures.size() - 1), width, height};
+}
+
+Texture Engine::loadTexture(const std::string& path)
+{
+    SDL_Texture* texture = IMG_LoadTexture(impl_->renderer, path.c_str());
+    if (!texture) {
+        throw std::runtime_error(std::string("IMG_LoadTexture failed for '") + path + "': " + SDL_GetError());
+    }
+
+    float width = 0.0f;
+    float height = 0.0f;
+    if (!SDL_GetTextureSize(texture, &width, &height)) {
+        const std::string error = SDL_GetError();
+        SDL_DestroyTexture(texture);
+        throw std::runtime_error(std::string("SDL_GetTextureSize failed: ") + error);
+    }
+
+    SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+    SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_LINEAR);
+    impl_->textures.push_back(texture);
+    return Texture{
+        static_cast<std::uint32_t>(impl_->textures.size() - 1),
+        static_cast<int>(width),
+        static_cast<int>(height)};
 }
 
 void Engine::destroyTexture(Texture& texture)
