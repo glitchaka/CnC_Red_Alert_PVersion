@@ -1,27 +1,24 @@
 cmake_minimum_required(VERSION 3.25)
-project(RedAlertPVersion LANGUAGES C CXX)
+project(RedAlertFramework VERSION 0.1.0 LANGUAGES C CXX)
 
 if(NOT WIN32)
-    message(FATAL_ERROR "This port currently targets Windows only.")
+    message(FATAL_ERROR "The current framework port targets Windows only.")
 endif()
+
+option(RA_BUILD_SANDBOX "Build the framework sandbox example" ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
 include(FetchContent)
 
-# -----------------------------------------------------------------------------
-# Modern open-source platform dependencies.
-#
-# DirectX 5 / DirectDraw / legacy Win32 multimedia -> SDL3
-# HMI SOS / legacy audio backend                    -> OpenAL Soft
-# Greenleaf modem/serial middleware                 -> removed from the Win11
-#                                                     build; networking remains
-#                                                     on Winsock while the modem
-#                                                     path is retired.
-# -----------------------------------------------------------------------------
+# SDL3 is the modern platform layer for windowing, input, timing, rendering and
+# audio. The legacy DirectX/HMI/Greenleaf stack is intentionally not part of
+# the default framework build.
 set(SDL_SHARED OFF CACHE BOOL "" FORCE)
 set(SDL_STATIC ON CACHE BOOL "" FORCE)
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
@@ -35,167 +32,6 @@ FetchContent_Declare(
     GIT_TAG release-3.4.18
     GIT_SHALLOW TRUE
 )
+FetchContent_MakeAvailable(SDL3)
 
-set(ALSOFT_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(ALSOFT_UTILS OFF CACHE BOOL "" FORCE)
-set(ALSOFT_TESTS OFF CACHE BOOL "" FORCE)
-set(ALSOFT_INSTALL OFF CACHE BOOL "" FORCE)
-set(ALSOFT_INSTALL_CONFIG OFF CACHE BOOL "" FORCE)
-set(ALSOFT_INSTALL_HRTF_DATA OFF CACHE BOOL "" FORCE)
-set(ALSOFT_INSTALL_AMBDEC_PRESETS OFF CACHE BOOL "" FORCE)
-set(LIBTYPE STATIC CACHE STRING "" FORCE)
-
-FetchContent_Declare(
-    OpenALSoft
-    GIT_REPOSITORY https://github.com/kcat/openal-soft.git
-    GIT_TAG 1.25.2
-    GIT_SHALLOW TRUE
-)
-
-FetchContent_MakeAvailable(SDL3 OpenALSoft)
-
-# -----------------------------------------------------------------------------
-# Source selection.
-#
-# Do NOT glob every CPP in the 1990s source dump. The tree contains utilities,
-# obsolete/alternate codecs, DOS/Watcom implementations and mutually exclusive
-# backends. This source list follows the actual Red Alert executable/common
-# split used by the maintained open-source port, but resolves each file from
-# this repository's own source tree.
-# -----------------------------------------------------------------------------
-set(RA_GAME_FILES
-    AADATA.CPP ABSTRACT.CPP ADATA.CPP AIRCRAFT.CPP ANIM.CPP AUDIO.CPP
-    BAR.CPP BASE.CPP BBDATA.CPP BDATA.CPP BENCH.CPP BIGCHECK.CPP BUILDING.CPP
-    BULLET.CPP CARGO.CPP CARRY.CPP CCINI.CPP CCPTR.CPP CDATA.CPP CELL.CPP
-    CHECKBOX.CPP CHEKLIST.CPP COLRLIST.CPP COMBAT.CPP CONFDLG.CPP CONQUER.CPP
-    CONST.CPP COORD.CPP CRATE.CPP CREDITS.CPP DEBUG.CPP DIAL8.CPP DIALOG.CPP
-    DIBFILE.CPP DIBUTIL.CPP DISPLAY.CPP DOOR.CPP DRIVE.CPP DROP.CPP EDIT.CPP
-    EGOS.CPP ENDING.CPP EVENT.CPP EXPAND.CPP FACE.CPP FACING.CPP FACTORY.CPP
-    FINDPATH.CPP FLASHER.CPP FLY.CPP FOOT.CPP FUSE.CPP GAMEDLG.CPP GAUGE.CPP
-    GLOBALS.CPP GOPTIONS.CPP GSCREEN.CPP HDATA.CPP HEAP.CPP HELP.CPP HOUSE.CPP
-    ICONLIST.CPP ICONSET.CPP IDATA.CPP INFANTRY.CPP INIT.CPP INTRO.CPP
-    IOMAP.CPP IOOBJ.CPP JSHELL.CPP LAYER.CPP LIST.CPP LOADDLG.CPP LOGIC.CPP
-    MAP.CPP MAPEDDLG.CPP MAPEDIT.CPP MAPEDPLC.CPP MAPEDSEL.CPP MAPEDTM.CPP
-    MAPSEL.CPP MENUS.CPP MISCASM.CPP MISSION.CPP MONOC.CPP MOUSE.CPP
-    MPLAYER.CPP MSGBOX.CPP MSGLIST.CPP NULLDLG.CPP OBJECT.CPP ODATA.CPP
-    OPTIONS.CPP OVERLAY.CPP POWER.CPP PROFILE.CPP QUEUE.CPP RADAR.CPP
-    RADIO.CPP RAWOLAPI.CPP REINF.CPP RULES.CPP SAVELOAD.CPP SCENARIO.CPP
-    SCORE.CPP SCROLL.CPP SDATA.CPP SEDITDLG.CPP SESSION.CPP SHAPEBTN.CPP
-    SIDEBAR.CPP SLIDER.CPP SMUDGE.CPP SOUNDDLG.CPP SPECIAL.CPP STARTUP.CPP
-    STATBTN.CPP STATS.CPP SUPER.CPP TAB.CPP TACTION.CPP TARGET.CPP TDATA.CPP
-    TEAM.CPP TEAMTYPE.CPP TECHNO.CPP TEMPLATE.CPP TERRAIN.CPP TEVENT.CPP
-    TEXTBTN.CPP THEME.CPP TOOLTIP.CPP TRACKER.CPP TRIGGER.CPP TRIGTYPE.CPP
-    TXTLABEL.CPP UDATA.CPP UNIT.CPP VDATA.CPP VERSION.CPP VESSEL.CPP
-    VISUDLG.CPP VORTEX.CPP WARHEAD.CPP WEAPON.CPP WINSTUB.CPP WOLSTRNG.CPP
-)
-
-set(RA_COMMON_FILES
-    _DIPTABL.CPP ALLOC.CPP AUDUNCMP.CPP B64PIPE.CPP B64STRAW.CPP BASE64.CPP
-    BFIOFILE.CPP BLOWFISH.CPP BLOWPIPE.CPP BLWSTRAW.CPP BUFF.CPP BUFFER.CPP
-    BUFFGLBL.CPP CCFILE.CPP CDFILE.CPP CLIPRECT.CPP COMBUF.CPP CONTROL.CPP
-    CRC.CPP CREW.CPP CSTRAW.CPP DELAY.CPP DIPTHONG.CPP DRAWBUFF.CPP
-    DRAWLINE.CPP DRAWMISC.CPP FADING.CPP FIELD.CPP FILE.CPP FILEPCX.CPP
-    FIXED.CPP FONT.CPP GADGET.CPP GETSHAPE.CPP HSV.CPP IFF.CPP INI.CPP
-    INT.CPP IRANDOM.CPP KEYBUFF.CPP KEYFRAME.CPP LCW.CPP LCWPIPE.CPP
-    LCWSTRAW.CPP LINEAR.CPP LINK.CPP LOAD.CPP MEMREV.CPP MISC.CPP MIXFILE.CPP
-    MP.CPP NEWDEL.CPP PACKET.CPP PALETTE.CPP PALETTEC.CPP PIPE.CPP PK.CPP
-    PKPIPE.CPP PKSTRAW.CPP RAMFILE.CPP RANDOM.CPP RAWFILE.CPP READLINE.CPP
-    RECT.CPP RGB.CPP RNDSTRAW.CPP SHA.CPP SHAPE.CPP SHAPIPE.CPP SHASTRAW.CPP
-    SOSCODEC.CPP STAMP.CPP STRAW.CPP TIMER.CPP TIMERDWN.CPP TOBUFF.CPP
-    TOGGLE.CPP VECTOR.CPP WINASM.CPP WINDOWS.CPP WINHIDE.CPP WSA.CPP
-    XORDELTA.CPP XPIPE.CPP XSTRAW.CPP
-)
-
-set(RA_NETWORK_FILES
-    IPXCONN.CPP IPXGCONN.CPP IPXMGR.CPP NETDLG.CPP SENDFILE.CPP
-)
-
-set(RA_SOURCES)
-set(RA_SEARCH_DIRS
-    "${CMAKE_CURRENT_SOURCE_DIR}/CODE"
-    "${CMAKE_CURRENT_SOURCE_DIR}/WIN32LIB"
-    "${CMAKE_CURRENT_SOURCE_DIR}/WIN32LIB/AUDIO"
-    "${CMAKE_CURRENT_SOURCE_DIR}/WIN32LIB/DRAWBUFF"
-    "${CMAKE_CURRENT_SOURCE_DIR}/WIN32LIB/FONT"
-    "${CMAKE_CURRENT_SOURCE_DIR}/WIN32LIB/IFF"
-    "${CMAKE_CURRENT_SOURCE_DIR}/WIN32LIB/KEYBOARD"
-    "${CMAKE_CURRENT_SOURCE_DIR}/WIN32LIB/MEM"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IPX"
-    "${CMAKE_CURRENT_SOURCE_DIR}/VQ"
-    "${CMAKE_CURRENT_SOURCE_DIR}/WINVQ"
-)
-
-function(ra_resolve_source filename)
-    foreach(dir IN LISTS RA_SEARCH_DIRS)
-        if(EXISTS "${dir}/${filename}")
-            set(RA_SOURCES "${RA_SOURCES};${dir}/${filename}" PARENT_SCOPE)
-            return()
-        endif()
-    endforeach()
-endfunction()
-
-foreach(src IN LISTS RA_GAME_FILES RA_COMMON_FILES RA_NETWORK_FILES)
-    ra_resolve_source("${src}")
-endforeach()
-
-# Small compile/link anchor for the modern dependency layer.
-list(APPEND RA_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/PORT/modern_platform.cpp")
-
-if(NOT RA_SOURCES)
-    message(FATAL_ERROR "No Red Alert sources were resolved from this repository.")
-endif()
-
-add_executable(redalert WIN32 ${RA_SOURCES})
-
-target_include_directories(redalert PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/PORT/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/CODE"
-    "${CMAKE_CURRENT_SOURCE_DIR}/WIN32LIB/INCLUDE"
-    "${CMAKE_CURRENT_SOURCE_DIR}/WIN32LIB"
-    "${CMAKE_CURRENT_SOURCE_DIR}/IPX"
-    "${CMAKE_CURRENT_SOURCE_DIR}/VQ"
-    "${CMAKE_CURRENT_SOURCE_DIR}/WINVQ"
-)
-
-target_compile_definitions(redalert PRIVATE
-    WIN32=1
-    _WINDOWS=1
-    ENGLISH=1
-    NOMINMAX=1
-    WIN32_LEAN_AND_MEAN=1
-    TRUE_FALSE_DEFINED=1
-    RA_MODERN_PLATFORM=1
-    RA_VIDEO_SDL3=1
-    RA_AUDIO_OPENAL=1
-    _CRT_SECURE_NO_DEPRECATE=1
-    _CRT_NONSTDC_NO_DEPRECATE=1
-)
-
-if(MSVC)
-    target_compile_options(redalert PRIVATE
-        /W3
-        /wd4068
-        /wd4244
-        /wd4267
-        /wd4996
-    )
-endif()
-
-# SDL3 replaces the obsolete DirectDraw/DirectInput-era platform layer.
-# OpenAL Soft replaces HMI SOS / DirectSound-era audio output.
-target_link_libraries(redalert PRIVATE
-    SDL3::SDL3-static
-    OpenAL::OpenAL
-    user32
-    gdi32
-    advapi32
-    winmm
-    ws2_32
-    shell32
-    ole32
-    uuid
-)
-
-set_target_properties(redalert PROPERTIES
-    OUTPUT_NAME "RedAlert"
-)
+add_subdirectory(FRAMEWORK)
