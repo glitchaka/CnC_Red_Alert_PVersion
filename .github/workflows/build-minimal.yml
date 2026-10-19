@@ -1,0 +1,40 @@
+name: Build minimal framework test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'FRAMEWORK/**'
+      - 'examples/basic_game.cpp'
+      - 'CMakeLists.txt'
+      - '.github/workflows/build-minimal.yml'
+
+jobs:
+  build-minimal:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build minimal executable
+        run: cmake --build build --config Release --target ra_sandbox --parallel
+
+      - name: Prepare minimal package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $exe = Get-ChildItem -Path build -Recurse -Filter "ra_sandbox.exe" | Select-Object -First 1
+          if (-not $exe) { throw "ra_sandbox.exe was not produced" }
+          Copy-Item $exe.FullName "dist/RA-Minimal.exe"
+          Copy-Item "SAMPLE_HUD.md" "dist/SAMPLE_HUD.md"
+
+      - name: Upload minimal executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: RA-Minimal-Windows-x64
+          path: dist/**
+          if-no-files-found: error
