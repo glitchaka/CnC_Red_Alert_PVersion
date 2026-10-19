@@ -30,6 +30,9 @@ jobs:
           $exe = Get-ChildItem -Path build -Recurse -Filter "ra_sandbox.exe" | Select-Object -First 1
           if (-not $exe) { throw "ra_sandbox.exe was not produced" }
           Copy-Item $exe.FullName "dist/RA-Minimal.exe"
+          $assetDir = Join-Path $exe.Directory.FullName "assets"
+          if (-not (Test-Path $assetDir)) { throw "sandbox assets were not packaged" }
+          Copy-Item $assetDir "dist/assets" -Recurse
           Copy-Item "SAMPLE_HUD.md" "dist/SAMPLE_HUD.md"
 
       - name: Upload minimal executable
