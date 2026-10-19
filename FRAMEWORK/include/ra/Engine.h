@@ -43,6 +43,13 @@ enum class Key {
     Count
 };
 
+enum class MouseButton {
+    Left,
+    Middle,
+    Right,
+    Count
+};
+
 struct EngineConfig {
     std::string title{"Red Alert Framework"};
     int width{1280};
@@ -79,6 +86,12 @@ public:
     bool keyPressed(Key key) const;
     bool keyReleased(Key key) const;
 
+    float mouseX() const;
+    float mouseY() const;
+    bool mouseDown(MouseButton button) const;
+    bool mousePressed(MouseButton button) const;
+    bool mouseReleased(MouseButton button) const;
+
     int windowWidth() const;
     int windowHeight() const;
     float deltaSeconds() const;
@@ -88,6 +101,7 @@ public:
     void drawRect(Rect rect, Color color);
 
     Texture createTextureRGBA(const unsigned char* rgba, int width, int height);
+    Texture loadTexture(const std::string& path);
     void destroyTexture(Texture& texture);
     void drawTexture(const Texture& texture, Rect destination);
 
