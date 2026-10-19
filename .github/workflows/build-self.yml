@@ -8,6 +8,7 @@ on:
       - 'CMakeLists.txt'
       - 'build.cmd'
       - 'CODE/**'
+      - 'PORT/**'
       - 'WIN32LIB/**'
       - 'IPX/**'
       - 'VQ/**'
@@ -17,10 +18,19 @@ on:
 jobs:
   build:
     runs-on: windows-2022
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+
       - name: Configure
         run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+
       - name: Build
         run: cmake --build build --config Release --parallel
+
+      - name: Upload executable
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RedAlert-Windows-x64
+          path: build/bin/Release/RedAlert.exe
