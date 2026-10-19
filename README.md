@@ -1,39 +1,62 @@
+# Red Alert Framework
 
-# Command & Conquer Red Alert
+This fork is being refactored from the released Command & Conquer: Red Alert source into a reusable Windows game framework.
 
-This repository includes source code for Command & Conquer Red Alert. This release provides support to the [Steam Workshop](https://steamcommunity.com/workshop/browse/?appid=2229840) for the game.
+The **default build no longer attempts to compile the entire 1990s game monolith**. It builds a clean framework library and a small sandbox application that proves the public API can be used by a separate game target.
 
+## Default outputs
 
-## Dependencies
+Running `build.cmd` produces:
 
-If you wish to rebuild the source code and tools successfully you will need to find or write new replacements (or remove the code using them entirely) for the following libraries;
+- `build/bin/Release/ra_sandbox.exe` — example game using the framework API.
+- `build/lib/Release/ra_engine.lib` — reusable static framework library.
+- Public headers under `FRAMEWORK/include/ra/`.
 
-- DirectX 5 SDK
-- DirectX Media 5.1 SDK
-- Greenleaf Communications Library (GCL)
-- Human Machine Interface (HMI) “Sound Operating System” (SOS)
+## Current framework API
 
+`RA::Engine` currently provides:
 
-## Compiling (Win32 Only)
+- application/game loop;
+- resizable SDL3 window;
+- frame timing / delta time;
+- keyboard input with down / pressed / released state;
+- basic 2D rendering primitives;
+- an application-facing `ra::Game` interface with start, update, render and stop callbacks.
 
-The current state of the source code does not fully compile and will require some effort to restore it. If you wish to restore the original build environment, the following tools are required;
+The sandbox in `examples/basic_game.cpp` is intentionally a separate executable linked against the framework. This is the pattern new games should use instead of including Red Alert's old global game code directly.
 
-- Watcom C/C++ (v10.6) for C/C++ source files
-- Borland Turbo Assembler (TASM v4.0) for assembly files
+## Using it from another CMake target
 
-To use the compiled binaries, you must own the game. The C&C Ultimate Collection is available for purchase on [EA App](https://www.ea.com/en-gb/games/command-and-conquer/command-and-conquer-the-ultimate-collection/buy/pc) or [Steam](https://store.steampowered.com/bundle/39394/Command__Conquer_The_Ultimate_Collection/).
+When this repository is part of your CMake build, link your game against the exported target:
 
+```cmake
+add_executable(my_game main.cpp)
+target_link_libraries(my_game PRIVATE RA::Engine)
+```
 
-## Contributing
+Then include the public API:
 
-This repository will not be accepting contributions (pull requests, issues, etc). If you wish to create changes to the source code and encourage collaboration, please create a fork of the repository under your GitHub user/organization space.
+```cpp
+#include <ra/Engine.h>
+```
 
+Derive your game from `ra::Game`, put simulation in `onUpdate`, drawing in `onRender`, and call `ra::Engine::run` from your executable.
 
-## Support
+## Architecture
 
-This repository is for preservation purposes only and is archived without support. 
+- `FRAMEWORK/` — reusable modern framework code and public API.
+- `examples/` — standalone framework examples/sandboxes.
+- `CODE/`, `WIN32LIB/`, `IPX/`, `VQ/`, `WINVQ/` — original/legacy Red Alert source retained for incremental extraction of useful engine systems.
+- `PORT/` — compatibility/porting work that may be reused while legacy systems are migrated.
 
+The original game source is **not** part of the default framework target. Legacy subsystems should be migrated behind clean framework interfaces rather than added wholesale to `ra_engine`.
 
-## License
+## Platform dependencies
 
-This repository and its contents are licensed under the GPL v3 license, with additional terms applied. Please see [LICENSE.md](LICENSE.md) for details.
+The framework-first build uses **SDL3** as the platform layer. The obsolete DirectX 5 / DirectDraw, HMI SOS and Greenleaf dependencies are not required by the default framework build.
+
+Audio, asset/container loading, Red Alert palette/sprite support, scene/entity systems and adapters for reusable legacy gameplay systems are intended to be added as framework modules rather than restoring the old monolithic dependency graph.
+
+## Licensing
+
+This repository contains source released by Electronic Arts under GPLv3. Any reuse or distribution must comply with the licensing terms present in the repository and applicable third-party licenses.
