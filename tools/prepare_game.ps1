@@ -41,5 +41,8 @@ $oldTextures = 'ra::Texture grass_,plains_,decor_,fences_,walls_,flooring_,woode
 $newTextures = 'ra::Texture grass_,plains_,decor_,fences_,walls_,flooring_,wooden_,chest_,player_,slime_,carpet_,door_,doorB_,objects_,water_,waterDecor_,waterLillies_,decor8_,chest2_,rockSheet_,rockSheetAlt_,rock1_,rock2_,rock3_,rock4_,rock5_,rock6_,water2_,water3_,water4_,water5_,water6_,waterSheet_,dust_,skeleton_,skeletonSwordless_;'
 Replace-Checked $oldTextures $newTextures 'texture members'
 
+Replace-Checked 'auto k=kinds_.find(u.id),b=busy_.find(u.id);' 'auto k=kinds_.find(u.id);auto b=busy_.find(u.id);' 'selected worker iterators'
+Replace-Checked 'auto k=kinds_.find(u.id),q=busy_.find(u.id);' 'auto k=kinds_.find(u.id);auto q=busy_.find(u.id);' 'economy iterators'
+
 Set-Content -LiteralPath $outPath -Value $src -Encoding UTF8
 Write-Host "Mystic Woods completo: fuente generada en examples\click_command.generated.cpp"
