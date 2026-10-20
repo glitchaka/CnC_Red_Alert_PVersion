@@ -22,7 +22,7 @@ set_target_properties(ra_engine PROPERTIES
 
 if(RA_BUILD_SANDBOX)
     add_executable(ra_sandbox
-        ${CMAKE_SOURCE_DIR}/examples/basic_game.cpp
+        ${CMAKE_SOURCE_DIR}/examples/stress_app.cpp
     )
     target_link_libraries(ra_sandbox PRIVATE RA::Engine)
     set_target_properties(ra_sandbox PROPERTIES
