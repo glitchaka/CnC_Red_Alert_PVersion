@@ -6,8 +6,7 @@ on:
     branches: [ main ]
     paths:
       - 'FRAMEWORK/**'
-      - 'examples/**'
-      - 'assets/**'
+      - 'examples/basic_game.cpp'
       - 'CMakeLists.txt'
       - '.github/workflows/build-minimal.yml'
 
@@ -31,8 +30,9 @@ jobs:
           $exe = Get-ChildItem -Path build -Recurse -Filter "ra_sandbox.exe" | Select-Object -First 1
           if (-not $exe) { throw "ra_sandbox.exe was not produced" }
           Copy-Item $exe.FullName "dist/RA-Minimal.exe"
-          if (-not (Test-Path "assets")) { throw "tracked game assets are missing" }
-          Copy-Item "assets" "dist/assets" -Recurse
+          $assetDir = Join-Path $exe.Directory.FullName "assets"
+          if (-not (Test-Path $assetDir)) { throw "sandbox assets were not packaged" }
+          Copy-Item $assetDir "dist/assets" -Recurse
           Copy-Item "SAMPLE_HUD.md" "dist/SAMPLE_HUD.md"
 
       - name: Upload minimal executable
