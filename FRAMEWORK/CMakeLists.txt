@@ -31,10 +31,10 @@ if(RA_BUILD_SANDBOX)
     )
 
     add_custom_command(TARGET ra_sandbox POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:ra_sandbox>/assets/kenney"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${RA_KENNEY_HUD}"
-            "$<TARGET_FILE_DIR:ra_sandbox>/assets/kenney/hud_bar.png"
-        COMMENT "Copying CC0 Kenney HUD sample asset"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:ra_sandbox>/assets/click-command"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/assets/click-command"
+            "$<TARGET_FILE_DIR:ra_sandbox>/assets/click-command"
+        COMMENT "Copying Click Command pixel-art assets"
     )
 endif()
