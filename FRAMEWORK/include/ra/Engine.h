@@ -40,6 +40,12 @@ enum class Key {
     A,
     S,
     D,
+    Q,
+    E,
+    LeftShift,
+    RightShift,
+    LeftControl,
+    RightControl,
     Count
 };
 
@@ -88,6 +94,7 @@ public:
 
     float mouseX() const;
     float mouseY() const;
+    float mouseWheelY() const;
     bool mouseDown(MouseButton button) const;
     bool mousePressed(MouseButton button) const;
     bool mouseReleased(MouseButton button) const;
@@ -95,10 +102,12 @@ public:
     int windowWidth() const;
     int windowHeight() const;
     float deltaSeconds() const;
+    void setWindowTitle(const std::string& title);
 
     void clear(Color color);
     void fillRect(Rect rect, Color color);
     void drawRect(Rect rect, Color color);
+    void drawLine(float x1, float y1, float x2, float y2, Color color);
 
     Texture createTextureRGBA(const unsigned char* rgba, int width, int height);
     Texture loadTexture(const std::string& path);
