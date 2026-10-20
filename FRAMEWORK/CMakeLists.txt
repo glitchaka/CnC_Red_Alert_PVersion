@@ -28,11 +28,11 @@ set_target_properties(ra_engine PROPERTIES
 
 if(RA_BUILD_SANDBOX)
     add_executable(ra_sandbox
-        ${CMAKE_SOURCE_DIR}/examples/game_app.cpp
+        ${CMAKE_SOURCE_DIR}/examples/integrated_app.cpp
     )
     target_link_libraries(ra_sandbox PRIVATE RA::Engine)
     if(WIN32)
-        target_link_libraries(ra_sandbox PRIVATE user32)
+        target_link_libraries(ra_sandbox PRIVATE user32 winhttp)
     endif()
     set_target_properties(ra_sandbox PROPERTIES
         OUTPUT_NAME "ra_sandbox"
