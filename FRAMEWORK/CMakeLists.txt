@@ -1,6 +1,7 @@
 add_library(ra_engine STATIC
     src/Engine.cpp
     src/RTS.cpp
+    src/Net.cpp
 )
 add_library(RA::Engine ALIAS ra_engine)
 
@@ -10,7 +11,7 @@ target_include_directories(ra_engine
 )
 
 target_compile_features(ra_engine PUBLIC cxx_std_17)
-target_link_libraries(ra_engine PUBLIC SDL3::SDL3-static SDL3_image::SDL3_image-static)
+target_link_libraries(ra_engine PUBLIC SDL3::SDL3-static SDL3_image::SDL3_image-static ws2_32)
 
 if(MSVC)
     target_compile_options(ra_engine PRIVATE /W4 /permissive-)
