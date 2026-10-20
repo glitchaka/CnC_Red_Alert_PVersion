@@ -90,6 +90,7 @@ UnitId World::spawnUnit(Vec2 position, int team, float speed)
     unit.id = nextId_++;
     unit.position = clampToBounds(position, unit.radius);
     unit.destination = unit.position;
+    unit.home = unit.position;
     unit.speed = std::max(1.0f, speed);
     unit.team = team;
     units_.push_back(unit);
@@ -102,11 +103,55 @@ void World::clear()
     nextId_ = 1;
 }
 
+void World::setAutonomous(UnitId id, bool enabled, float patrolRadius)
+{
+    Unit* unit = find(id);
+    if (!unit) return;
+    unit->autonomous = enabled;
+    unit->patrolRadius = std::max(16.0f, patrolRadius);
+    unit->home = unit->position;
+    unit->thinkCooldown = 0.0f;
+    unit->order = enabled ? UnitOrder::Patrol : UnitOrder::Idle;
+}
+
+void World::setAllAutonomous(bool enabled, float patrolRadius)
+{
+    for (auto& unit : units_) {
+        unit.autonomous = enabled;
+        unit.patrolRadius = std::max(16.0f, patrolRadius);
+        unit.home = unit.position;
+        unit.thinkCooldown = 0.0f;
+        unit.order = enabled ? UnitOrder::Patrol : UnitOrder::Idle;
+    }
+}
+
+void World::updateAutonomous(Unit& unit, float dt)
+{
+    if (!unit.autonomous) return;
+
+    unit.thinkCooldown = std::max(0.0f, unit.thinkCooldown - dt);
+    const float d2 = distanceSquared(unit.position, unit.destination);
+    if (d2 > 16.0f || unit.thinkCooldown > 0.0f) return;
+
+    constexpr float twoPi = 6.28318530718f;
+    ++unit.aiStep;
+    const float phase = std::fmod(static_cast<float>(unit.id) * 1.6180339f + static_cast<float>(unit.aiStep) * 2.3999632f, twoPi);
+    const float radius = unit.patrolRadius * (0.45f + 0.55f * static_cast<float>((unit.aiStep % 5u) + 1u) / 5.0f);
+    Vec2 target{
+        unit.home.x + std::cos(phase) * radius,
+        unit.home.y + std::sin(phase) * radius};
+    unit.destination = clampToBounds(target, unit.radius);
+    unit.order = UnitOrder::Patrol;
+    unit.thinkCooldown = 0.35f + static_cast<float>((unit.id + unit.aiStep) % 5u) * 0.09f;
+}
+
 void World::update(float dt)
 {
     dt = std::clamp(dt, 0.0f, 0.1f);
 
     for (auto& unit : units_) {
+        updateAutonomous(unit, dt);
+
         const float dx = unit.destination.x - unit.position.x;
         const float dy = unit.destination.y - unit.position.y;
         const float distance = std::sqrt(dx * dx + dy * dy);
@@ -155,9 +200,9 @@ int World::selectRect(Bounds worldRect, bool additive)
 
     int count = 0;
     for (auto& unit : units_) {
-        const bool inside = unit.position.x >= worldRect.left && unit.position.x <= worldRect.right &&
-                            unit.position.y >= worldRect.top && unit.position.y <= worldRect.bottom;
-        if (inside) {
+        const bool isInside = unit.position.x >= worldRect.left && unit.position.x <= worldRect.right &&
+                              unit.position.y >= worldRect.top && unit.position.y <= worldRect.bottom;
+        if (isInside) {
             unit.selected = true;
             ++count;
         }
@@ -190,7 +235,11 @@ void World::commandMove(Vec2 destination, float spacing)
         Vec2 slot{
             destination.x + static_cast<float>(column) * spacing - totalWidth * 0.5f,
             destination.y + static_cast<float>(row) * spacing - totalHeight * 0.5f};
-        unit.destination = clampToBounds(slot, unit.radius);
+        slot = clampToBounds(slot, unit.radius);
+        unit.destination = slot;
+        unit.home = slot;
+        unit.order = UnitOrder::Move;
+        unit.thinkCooldown = 0.8f;
         ++index;
     }
 }
@@ -198,7 +247,11 @@ void World::commandMove(Vec2 destination, float spacing)
 void World::commandStop()
 {
     for (auto& unit : units_) {
-        if (unit.selected) unit.destination = unit.position;
+        if (!unit.selected) continue;
+        unit.destination = unit.position;
+        unit.home = unit.position;
+        unit.order = UnitOrder::Idle;
+        unit.thinkCooldown = 0.8f;
     }
 }
 
@@ -243,7 +296,7 @@ void World::applySeparation(float dt)
         for (std::size_t j = i + 1; j < units_.size(); ++j) {
             Vec2 delta{units_[j].position.x - units_[i].position.x,
                        units_[j].position.y - units_[i].position.y};
-            float distSq = lengthSquared(delta);
+            const float distSq = lengthSquared(delta);
             const float minDistance = units_[i].radius + units_[j].radius + 4.0f;
             if (distSq <= 0.0001f || distSq >= minDistance * minDistance) continue;
 
