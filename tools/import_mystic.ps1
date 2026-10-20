@@ -20,9 +20,8 @@ try {
     }
 
     New-Item -ItemType Directory -Force -Path $target | Out-Null
-    Copy-Item -LiteralPath (Join-Path $sprites '*') -Destination $target -Recurse -Force
+    Copy-Item -Path (Join-Path $sprites '*') -Destination $target -Recurse -Force
 
-    # Alias heredados usados por gameplay; el editor usa además la estructura original completa.
     $aliases = @(
         @('tilesets\plains.png', 'plains.png'),
         @('tilesets\floors\flooring.png', 'tilesets\flooring.png'),
