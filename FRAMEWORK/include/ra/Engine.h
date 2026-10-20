@@ -25,7 +25,8 @@ struct Texture {
     int width{0};
     int height{0};
 
-    explicit operator bool() const noexcept { return id != 0; }
+    // Texture slot 0 is valid: validity comes from successfully loaded dimensions.
+    explicit operator bool() const noexcept { return width > 0 && height > 0; }
 };
 
 enum class Key {
