@@ -114,6 +114,7 @@ public:
     Texture loadTexture(const std::string& path);
     void destroyTexture(Texture& texture);
     void drawTexture(const Texture& texture, Rect destination);
+    void drawTextureRegion(const Texture& texture, Rect source, Rect destination);
 
     const EngineConfig& config() const noexcept;
 
