@@ -8,13 +8,19 @@ if errorlevel 1 (
     exit /b 1
 )
 
-rem Los assets Mystic Woods usados por el juego estan versionados en el repositorio.
+rem Assets Mystic Woods usados directamente por el juego.
+set ASSETS=assets\mystic\plains.png assets\mystic\characters\player.png assets\mystic\characters\slime.png assets\mystic\tilesets\grass.png assets\mystic\tilesets\decor_16x16.png assets\mystic\tilesets\fences.png assets\mystic\tilesets\walls.png assets\mystic\tilesets\flooring.png assets\mystic\tilesets\wooden.png assets\mystic\objects\chest_01.png
+
 if not exist "assets\mystic\plains.png" goto :restore_assets
 if not exist "assets\mystic\characters\player.png" goto :restore_assets
 if not exist "assets\mystic\characters\slime.png" goto :restore_assets
 if not exist "assets\mystic\tilesets\grass.png" goto :restore_assets
+if not exist "assets\mystic\tilesets\decor_16x16.png" goto :restore_assets
 if not exist "assets\mystic\tilesets\fences.png" goto :restore_assets
 if not exist "assets\mystic\tilesets\walls.png" goto :restore_assets
+if not exist "assets\mystic\tilesets\flooring.png" goto :restore_assets
+if not exist "assets\mystic\tilesets\wooden.png" goto :restore_assets
+if not exist "assets\mystic\objects\chest_01.png" goto :restore_assets
 goto :assets_ready
 
 :restore_assets
@@ -23,18 +29,20 @@ if errorlevel 1 (
     echo ERROR: faltan assets versionados y git no esta disponible para restaurarlos.
     exit /b 1
 )
-git restore --source=HEAD -- "assets/mystic/plains.png" "assets/mystic/characters/player.png" "assets/mystic/characters/slime.png" "assets/mystic/tilesets/grass.png" "assets/mystic/tilesets/fences.png" "assets/mystic/tilesets/walls.png" >nul 2>nul
-if errorlevel 1 (
-    git checkout HEAD -- "assets/mystic/plains.png" "assets/mystic/characters/player.png" "assets/mystic/characters/slime.png" "assets/mystic/tilesets/grass.png" "assets/mystic/tilesets/fences.png" "assets/mystic/tilesets/walls.png" >nul 2>nul
-)
+git restore --source=HEAD -- assets/mystic >nul 2>nul
+if errorlevel 1 git checkout HEAD -- assets/mystic >nul 2>nul
 
 :assets_ready
 if not exist "assets\mystic\plains.png" goto :asset_error
 if not exist "assets\mystic\characters\player.png" goto :asset_error
 if not exist "assets\mystic\characters\slime.png" goto :asset_error
 if not exist "assets\mystic\tilesets\grass.png" goto :asset_error
+if not exist "assets\mystic\tilesets\decor_16x16.png" goto :asset_error
 if not exist "assets\mystic\tilesets\fences.png" goto :asset_error
 if not exist "assets\mystic\tilesets\walls.png" goto :asset_error
+if not exist "assets\mystic\tilesets\flooring.png" goto :asset_error
+if not exist "assets\mystic\tilesets\wooden.png" goto :asset_error
+if not exist "assets\mystic\objects\chest_01.png" goto :asset_error
 
 if exist "RA-Framework.exe" del /q "RA-Framework.exe" >nul 2>nul
 if exist "RA-Framework-error.txt" del /q "RA-Framework-error.txt" >nul 2>nul
