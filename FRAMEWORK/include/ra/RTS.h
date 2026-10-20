@@ -19,16 +19,28 @@ struct Bounds {
 
 using UnitId = std::uint32_t;
 
+enum class UnitOrder {
+    Idle,
+    Move,
+    Patrol
+};
+
 struct Unit {
     UnitId id{0};
     Vec2 position{};
     Vec2 destination{};
+    Vec2 home{};
     float speed{110.0f};
     float radius{12.0f};
     float health{100.0f};
     float maxHealth{100.0f};
+    float patrolRadius{110.0f};
+    float thinkCooldown{0.0f};
+    std::uint32_t aiStep{0};
     int team{0};
     bool selected{false};
+    bool autonomous{false};
+    UnitOrder order{UnitOrder::Idle};
 };
 
 class Camera2D {
@@ -60,6 +72,9 @@ public:
     void clear();
     void update(float dt);
 
+    void setAutonomous(UnitId id, bool enabled, float patrolRadius = 110.0f);
+    void setAllAutonomous(bool enabled, float patrolRadius = 110.0f);
+
     void clearSelection();
     bool selectPoint(Vec2 worldPoint, float pickRadius = 24.0f, bool additive = false);
     int selectRect(Bounds worldRect, bool additive = false);
@@ -77,6 +92,7 @@ public:
 
 private:
     Vec2 clampToBounds(Vec2 point, float radius) const noexcept;
+    void updateAutonomous(Unit& unit, float dt);
     void applySeparation(float dt);
 
     Bounds bounds_{};
