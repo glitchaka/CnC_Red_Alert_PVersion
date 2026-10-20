@@ -81,7 +81,9 @@ public:
     int selectedCount() const noexcept;
 
     void commandMove(Vec2 destination, float spacing = 34.0f);
+    void commandMoveUnits(const std::vector<UnitId>& ids, Vec2 destination, float spacing = 34.0f);
     void commandStop();
+    void commandStopUnits(const std::vector<UnitId>& ids);
 
     Unit* find(UnitId id);
     const Unit* find(UnitId id) const;
