@@ -32,7 +32,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(SDL3)
 
-# SDL_image: modern PNG loader for framework/sample assets.
+# SDL_image: PNG loader for the real Mystic Woods / Bit Bonanza assets.
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(SDLIMAGE_INSTALL OFF CACHE BOOL "" FORCE)
 set(SDLIMAGE_SAMPLES OFF CACHE BOOL "" FORCE)
@@ -63,27 +63,5 @@ FetchContent_Declare(
     GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(SDL3_image)
-
-# CC0 sample HUD artwork from Kenney. It is downloaded only for the sandbox;
-# the framework itself has no dependency on Kenney assets.
-if(RA_BUILD_SANDBOX)
-    set(RA_SAMPLE_ASSET_DIR "${CMAKE_BINARY_DIR}/sample_assets")
-    file(MAKE_DIRECTORY "${RA_SAMPLE_ASSET_DIR}/kenney")
-    set(RA_KENNEY_HUD "${RA_SAMPLE_ASSET_DIR}/kenney/hud_bar.png")
-    if(NOT EXISTS "${RA_KENNEY_HUD}")
-        file(DOWNLOAD
-            "https://raw.githubusercontent.com/shorepine/kenney/main/ui/UI%20Pack%20-%20Sci-fi/Blue/bar_round_gloss_large.png"
-            "${RA_KENNEY_HUD}"
-            EXPECTED_HASH SHA256=3c5ba6a36ec990665df901c42e1148fc4f5128858fc86514e667a69a03f34103
-            TLS_VERIFY ON
-            STATUS RA_HUD_DOWNLOAD_STATUS
-        )
-        list(GET RA_HUD_DOWNLOAD_STATUS 0 RA_HUD_DOWNLOAD_CODE)
-        if(NOT RA_HUD_DOWNLOAD_CODE EQUAL 0)
-            list(GET RA_HUD_DOWNLOAD_STATUS 1 RA_HUD_DOWNLOAD_MESSAGE)
-            message(FATAL_ERROR "Failed to download CC0 Kenney HUD sample: ${RA_HUD_DOWNLOAD_MESSAGE}")
-        endif()
-    endif()
-endif()
 
 add_subdirectory(FRAMEWORK)
