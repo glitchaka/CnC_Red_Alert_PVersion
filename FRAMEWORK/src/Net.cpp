@@ -5,6 +5,7 @@
 #include <ws2tcpip.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <utility>
@@ -15,6 +16,24 @@ namespace {
 std::string winSockError(const char* prefix)
 {
     return std::string(prefix) + " (WSA " + std::to_string(WSAGetLastError()) + ")";
+}
+
+bool resolveIPv4(const std::string& host, in_addr& out)
+{
+    if (inet_pton(AF_INET, host.c_str(), &out) == 1) return true;
+
+    addrinfo hints{};
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_protocol = IPPROTO_UDP;
+
+    addrinfo* result = nullptr;
+    if (getaddrinfo(host.c_str(), nullptr, &hints, &result) != 0 || !result) return false;
+
+    const auto* address = reinterpret_cast<const sockaddr_in*>(result->ai_addr);
+    out = address->sin_addr;
+    freeaddrinfo(result);
+    return true;
 }
 
 } // namespace
@@ -140,9 +159,17 @@ bool DatagramSocket::send(const Endpoint& endpoint, const void* data, std::size_
     remote.sin_family = AF_INET;
     remote.sin_port = htons(endpoint.port);
 
-    if (endpoint.address == "255.255.255.255" || endpoint.address == "<broadcast>") {
+    const bool broadcastEndpoint = endpoint.address == "255.255.255.255" || endpoint.address == "<broadcast>";
+    const char* internetHost = broadcastEndpoint ? std::getenv("CC_HOST") : nullptr;
+
+    if (internetHost && *internetHost) {
+        if (!resolveIPv4(internetHost, remote.sin_addr)) {
+            impl_->error = std::string("cannot resolve internet host: ") + internetHost;
+            return false;
+        }
+    } else if (broadcastEndpoint) {
         remote.sin_addr.s_addr = htonl(INADDR_BROADCAST);
-    } else if (inet_pton(AF_INET, endpoint.address.c_str(), &remote.sin_addr) != 1) {
+    } else if (!resolveIPv4(endpoint.address, remote.sin_addr)) {
         impl_->error = "invalid IPv4 endpoint: " + endpoint.address;
         return false;
     }
