@@ -1,0 +1,1 @@
+Mystic Woods Free 2.2 assets used directly by Click Command. Terrain tiles are read as 16x16 regions from plains.png. Premium-marked rows are not used.
