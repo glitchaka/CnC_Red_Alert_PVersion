@@ -37,4 +37,15 @@ if(RA_BUILD_SANDBOX)
     set_target_properties(ra_sandbox PROPERTIES
         OUTPUT_NAME "ra_sandbox"
     )
+
+    add_executable(ra_map_editor
+        ${CMAKE_SOURCE_DIR}/examples/map_editor.cpp
+    )
+    target_link_libraries(ra_map_editor PRIVATE RA::Engine)
+    if(WIN32)
+        target_link_libraries(ra_map_editor PRIVATE user32)
+    endif()
+    set_target_properties(ra_map_editor PROPERTIES
+        OUTPUT_NAME "ra_map_editor"
+    )
 endif()
