@@ -23,6 +23,11 @@ Bounds normalized(Bounds bounds)
     return bounds;
 }
 
+bool containsId(const std::vector<UnitId>& ids, UnitId id)
+{
+    return std::find(ids.begin(), ids.end(), id) != ids.end();
+}
+
 } // namespace
 
 void Camera2D::setViewport(float width, float height)
@@ -219,9 +224,19 @@ int World::selectedCount() const noexcept
 
 void World::commandMove(Vec2 destination, float spacing)
 {
-    const int count = selectedCount();
-    if (count <= 0) return;
+    std::vector<UnitId> ids;
+    ids.reserve(units_.size());
+    for (const auto& unit : units_) {
+        if (unit.selected) ids.push_back(unit.id);
+    }
+    commandMoveUnits(ids, destination, spacing);
+}
 
+void World::commandMoveUnits(const std::vector<UnitId>& ids, Vec2 destination, float spacing)
+{
+    if (ids.empty()) return;
+
+    const int count = static_cast<int>(ids.size());
     const int columns = std::max(1, static_cast<int>(std::ceil(std::sqrt(static_cast<float>(count)))));
     const int rows = (count + columns - 1) / columns;
     const float totalWidth = static_cast<float>(columns - 1) * spacing;
@@ -229,7 +244,8 @@ void World::commandMove(Vec2 destination, float spacing)
 
     int index = 0;
     for (auto& unit : units_) {
-        if (!unit.selected) continue;
+        if (!containsId(ids, unit.id)) continue;
+
         const int column = index % columns;
         const int row = index / columns;
         Vec2 slot{
@@ -246,8 +262,19 @@ void World::commandMove(Vec2 destination, float spacing)
 
 void World::commandStop()
 {
+    std::vector<UnitId> ids;
+    ids.reserve(units_.size());
+    for (const auto& unit : units_) {
+        if (unit.selected) ids.push_back(unit.id);
+    }
+    commandStopUnits(ids);
+}
+
+void World::commandStopUnits(const std::vector<UnitId>& ids)
+{
+    if (ids.empty()) return;
     for (auto& unit : units_) {
-        if (!unit.selected) continue;
+        if (!containsId(ids, unit.id)) continue;
         unit.destination = unit.position;
         unit.home = unit.position;
         unit.order = UnitOrder::Idle;
