@@ -1,5 +1,6 @@
 #include <ra/Engine.h>
 #include <ra/RTS.h>
+#include "EmbeddedAssets.h"
 
 #include <algorithm>
 #include <cmath>
@@ -9,510 +10,328 @@
 
 namespace {
 
-struct ClickFx {
-    float x{0.0f};
-    float y{0.0f};
-    float life{0.0f};
-};
-
+struct ClickFx { float x{0}; float y{0}; float life{0}; };
 enum class Screen { Splash, Menu, Game };
 
-float clampf(float v, float lo, float hi)
+float clampf(float v, float lo, float hi) { return std::max(lo, std::min(v, hi)); }
+bool inside(float x,float y,float l,float t,float r,float b){ return x>=l&&x<=r&&y>=t&&y<=b; }
+
+ra::Texture makeIndexed(ra::Engine& engine, int w, int h,
+                        const unsigned char* palette, std::size_t paletteCount,
+                        const unsigned char* indices)
 {
-    return std::max(lo, std::min(v, hi));
+    std::vector<unsigned char> rgba(static_cast<std::size_t>(w*h*4));
+    for (int i=0;i<w*h;++i) {
+        const std::size_t p = std::min<std::size_t>(indices[i], paletteCount-1);
+        rgba[static_cast<std::size_t>(i)*4+0] = palette[p*4+0];
+        rgba[static_cast<std::size_t>(i)*4+1] = palette[p*4+1];
+        rgba[static_cast<std::size_t>(i)*4+2] = palette[p*4+2];
+        rgba[static_cast<std::size_t>(i)*4+3] = palette[p*4+3];
+    }
+    return engine.createTextureRGBA(rgba.data(), w, h);
 }
 
-bool inside(float x, float y, float l, float t, float r, float b)
+template<std::size_t N>
+ra::Texture makeAsset(ra::Engine& e,int w,int h,const unsigned char (&pal)[N][4],const unsigned char* idx)
 {
-    return x >= l && x <= r && y >= t && y <= b;
+    return makeIndexed(e,w,h,&pal[0][0],N,idx);
 }
 
 } // namespace
 
 class ClickerRTS final : public ra::Game {
 public:
-    void onStart(ra::Engine& engine) override
+    void onStart(ra::Engine& e) override
     {
-        engine.setWindowTitle("Click Command - Loading");
-        grassA_ = tryLoad(engine, "assets/click-command/plains_grass_a.png");
-        grassB_ = tryLoad(engine, "assets/click-command/plains_grass_b.png");
-        dirt_ = tryLoad(engine, "assets/click-command/plains_dirt.png");
-        flowers_ = tryLoad(engine, "assets/click-command/plains_flowers.png");
-        forest_ = tryLoad(engine, "assets/click-command/plains_forest.png");
-        rock_ = tryLoad(engine, "assets/click-command/plains_rock.png");
-        water_ = tryLoad(engine, "assets/click-command/plains_water.png");
-        baseTex_ = tryLoad(engine, "assets/click-command/building_base.png");
-        barracksTex_ = tryLoad(engine, "assets/click-command/building_barracks.png");
-        towerTex_ = tryLoad(engine, "assets/click-command/building_tower.png");
-        unitTex_ = tryLoad(engine, "assets/click-command/unit_basic.png");
-        coinTex_ = tryLoad(engine, "assets/click-command/resource_coin.png");
+        using namespace click_assets;
+        grass_      = makeAsset(e,grass_w,grass_h,grass_palette,grass_indices);
+        dirt_       = makeAsset(e,dirt_w,dirt_h,dirt_palette,dirt_indices);
+        dirtTop_    = makeAsset(e,dirt_top_w,dirt_top_h,dirt_top_palette,dirt_top_indices);
+        dirtBottom_ = makeAsset(e,dirt_bottom_w,dirt_bottom_h,dirt_bottom_palette,dirt_bottom_indices);
+        dirtLeft_   = makeAsset(e,dirt_left_w,dirt_left_h,dirt_left_palette,dirt_left_indices);
+        dirtRight_  = makeAsset(e,dirt_right_w,dirt_right_h,dirt_right_palette,dirt_right_indices);
+        hill_       = makeAsset(e,hill_w,hill_h,hill_palette,hill_indices);
+        wall_       = makeAsset(e,wall_w,wall_h,wall_palette,wall_indices);
+        wood_       = makeAsset(e,wood_w,wood_h,wood_palette,wood_indices);
+        unit_       = makeAsset(e,unit_w,unit_h,unit_palette,unit_indices);
+        e.setWindowTitle("Click Command - Loading");
     }
 
-    void onUpdate(ra::Engine& engine, float dt) override
+    void onUpdate(ra::Engine& e,float dt) override
     {
-        if (screen_ == Screen::Splash) {
-            splashTime_ += dt;
-            if (splashTime_ >= 1.1f || engine.keyPressed(ra::Key::Enter) || engine.mousePressed(ra::MouseButton::Left)) {
-                screen_ = Screen::Menu;
-                engine.setWindowTitle("Click Command");
+        if(screen_==Screen::Splash){
+            splash_+=dt;
+            if(splash_>0.8f||e.keyPressed(ra::Key::Enter)||e.mousePressed(ra::MouseButton::Left)){
+                screen_=Screen::Menu; e.setWindowTitle("Click Command");
             }
             return;
         }
-
-        if (screen_ == Screen::Menu) {
-            updateMenu(engine);
-            return;
-        }
-
-        updateGame(engine, dt);
+        if(screen_==Screen::Menu){ updateMenu(e); return; }
+        updateGame(e,dt);
     }
 
-    void onRender(ra::Engine& engine) override
+    void onRender(ra::Engine& e) override
     {
-        if (screen_ == Screen::Splash) renderSplash(engine);
-        else if (screen_ == Screen::Menu) renderMenu(engine);
-        else renderGame(engine);
+        if(screen_==Screen::Splash) renderSplash(e);
+        else if(screen_==Screen::Menu) renderMenu(e);
+        else renderGame(e);
     }
 
 private:
-    ra::Texture tryLoad(ra::Engine& engine, const char* path)
+    static constexpr float Tile = 32.0f;
+
+    void updateMenu(ra::Engine& e)
     {
-        try {
-            return engine.loadTexture(path);
-        } catch (...) {
-            return {};
-        }
+        if(e.keyPressed(ra::Key::Escape)){ e.quit(); return; }
+        const float w=(float)e.windowWidth(), h=(float)e.windowHeight();
+        const float bx=w*0.5f-210.0f, by=h*0.58f;
+        if(e.keyPressed(ra::Key::Enter)||(e.mousePressed(ra::MouseButton::Left)&&inside(e.mouseX(),e.mouseY(),bx,by,bx+420,by+64))) startGame(e);
     }
 
-    void updateMenu(ra::Engine& engine)
+    void startGame(ra::Engine& e)
     {
-        if (engine.keyPressed(ra::Key::Escape)) {
-            engine.quit();
-            return;
-        }
-
-        const float w = static_cast<float>(engine.windowWidth());
-        const float h = static_cast<float>(engine.windowHeight());
-        const float bx = w * 0.5f - 210.0f;
-        const float by = h * 0.55f;
-
-        if (engine.keyPressed(ra::Key::Enter) ||
-            (engine.mousePressed(ra::MouseButton::Left) && inside(engine.mouseX(), engine.mouseY(), bx, by, bx + 420.0f, by + 66.0f))) {
-            startGame(engine);
-        }
-    }
-
-    void startGame(ra::Engine& engine)
-    {
-        screen_ = Screen::Game;
-        resources_ = 0;
-        world_.clear();
-        clickFx_.clear();
-        cameraX_ = 350.0f;
-        cameraY_ = 250.0f;
-        zoom_ = 1.0f;
-        dragActive_ = false;
-        spawnBasicUnit(baseX_ + 40.0f, baseY_ + 110.0f, false);
-        spawnBasicUnit(baseX_ - 45.0f, baseY_ + 120.0f, false);
-        spawnBasicUnit(baseX_ + 95.0f, baseY_ + 55.0f, false);
-        engine.setWindowTitle("Click Command - RTS Clicker");
+        screen_=Screen::Game; resources_=0; world_.clear(); clickFx_.clear();
+        zoom_=1.0f; drag_=false;
+        cameraX_=baseX_-420.0f; cameraY_=baseY_-300.0f;
+        spawn(baseX_+80,baseY_+125,false);
+        spawn(baseX_-55,baseY_+130,false);
+        spawn(baseX_+150,baseY_+80,false);
+        e.setWindowTitle("Click Command - RTS Clicker");
     }
 
     int nextUnitCost() const
     {
-        const int bought = std::max(0, static_cast<int>(world_.units().size()) - 3);
-        return static_cast<int>(std::ceil(static_cast<double>(baseUnitCost_) * std::pow(unitCostGrowth_, bought)));
+        const int bought=std::max(0,(int)world_.units().size()-3);
+        return (int)std::ceil(baseCost_*std::pow(costGrowth_,bought));
     }
 
-    void buyBasicUnit()
+    void spawn(float x,float y,bool select)
     {
-        const int cost = nextUnitCost();
-        if (resources_ < cost) return;
-
-        resources_ -= cost;
-        const int n = static_cast<int>(world_.units().size());
-        const float angle = static_cast<float>(n) * 0.88f;
-        const float radius = 105.0f + 14.0f * static_cast<float>(n % 4);
-        spawnBasicUnit(baseX_ + std::cos(angle) * radius, baseY_ + std::sin(angle) * radius, true);
+        auto id=world_.spawnUnit({x,y},0,96.0f);
+        world_.setAutonomous(id,true,145.0f);
+        if(select){ world_.clearSelection(); if(auto* u=world_.find(id)) u->selected=true; }
     }
 
-    void spawnBasicUnit(float x, float y, bool select)
+    void buyUnit()
     {
-        const auto id = world_.spawnUnit({x, y}, 0, 92.0f);
-        world_.setAutonomous(id, true, 150.0f);
-
-        if (select) {
-            world_.clearSelection();
-            if (auto* unit = world_.find(id)) unit->selected = true;
-        }
+        const int cost=nextUnitCost(); if(resources_<cost) return;
+        resources_-=cost;
+        const int n=(int)world_.units().size();
+        const float a=(float)n*0.9f;
+        spawn(baseX_+std::cos(a)*145.0f,baseY_+std::sin(a)*115.0f,true);
     }
 
-    void updateGame(ra::Engine& engine, float dt)
+    void updateGame(ra::Engine& e,float dt)
     {
-        if (engine.keyPressed(ra::Key::Escape)) {
-            screen_ = Screen::Menu;
-            engine.setWindowTitle("Click Command");
-            return;
+        if(e.keyPressed(ra::Key::Escape)){ screen_=Screen::Menu; e.setWindowTitle("Click Command"); return; }
+        const float panelX=hudX(e), mx=e.mouseX(), my=e.mouseY();
+
+        const float wh=e.mouseWheelY();
+        if(wh!=0) zoom_=clampf(zoom_+wh*0.12f,0.65f,2.6f);
+        if(e.keyDown(ra::Key::Q)) zoom_=clampf(zoom_-dt,0.65f,2.6f);
+        if(e.keyDown(ra::Key::E)) zoom_=clampf(zoom_+dt,0.65f,2.6f);
+
+        float dx=0,dy=0;
+        if(e.keyDown(ra::Key::A)||e.keyDown(ra::Key::Left)) dx-=1;
+        if(e.keyDown(ra::Key::D)||e.keyDown(ra::Key::Right)) dx+=1;
+        if(e.keyDown(ra::Key::W)||e.keyDown(ra::Key::Up)) dy-=1;
+        if(e.keyDown(ra::Key::S)||e.keyDown(ra::Key::Down)) dy+=1;
+        if(mx<10) dx-=1; if(mx<panelX&&mx>panelX-10) dx+=1;
+        if(my<10) dy-=1; if(my>(float)e.windowHeight()-10) dy+=1;
+        const float speed=560.0f/zoom_*dt;
+        cameraX_+=dx*speed; cameraY_+=dy*speed; clampCamera(e);
+
+        const float buyX=panelX+20,buyY=150,buyW=(float)e.windowWidth()-panelX-40;
+        if(e.mousePressed(ra::MouseButton::Left)){
+            if(inside(mx,my,buyX,buyY,buyX+buyW,buyY+72)) buyUnit();
+            else if(mx<panelX){ drag_=true; sx_=ex_=mx; sy_=ey_=my; }
         }
-
-        const float panelX = hudX(engine);
-        const float mx = engine.mouseX();
-        const float my = engine.mouseY();
-
-        const float wheel = engine.mouseWheelY();
-        if (wheel != 0.0f) zoom_ = clampf(zoom_ + wheel * 0.12f, 0.55f, 2.6f);
-        if (engine.keyDown(ra::Key::Q)) zoom_ = clampf(zoom_ - dt, 0.55f, 2.6f);
-        if (engine.keyDown(ra::Key::E)) zoom_ = clampf(zoom_ + dt, 0.55f, 2.6f);
-
-        float dx = 0.0f;
-        float dy = 0.0f;
-        if (engine.keyDown(ra::Key::A) || engine.keyDown(ra::Key::Left)) dx -= 1.0f;
-        if (engine.keyDown(ra::Key::D) || engine.keyDown(ra::Key::Right)) dx += 1.0f;
-        if (engine.keyDown(ra::Key::W) || engine.keyDown(ra::Key::Up)) dy -= 1.0f;
-        if (engine.keyDown(ra::Key::S) || engine.keyDown(ra::Key::Down)) dy += 1.0f;
-
-        if (mx >= 0.0f && mx < 10.0f) dx -= 1.0f;
-        if (mx < panelX && mx > panelX - 10.0f) dx += 1.0f;
-        if (my >= 0.0f && my < 10.0f) dy -= 1.0f;
-        if (my > static_cast<float>(engine.windowHeight()) - 10.0f) dy += 1.0f;
-
-        const float cameraSpeed = (620.0f / zoom_) * dt;
-        cameraX_ += dx * cameraSpeed;
-        cameraY_ += dy * cameraSpeed;
-        clampCamera(engine);
-
-        const float buyX = panelX + 20.0f;
-        const float buyY = 160.0f;
-        const float buyW = static_cast<float>(engine.windowWidth()) - panelX - 40.0f;
-
-        if (engine.mousePressed(ra::MouseButton::Left)) {
-            if (inside(mx, my, buyX, buyY, buyX + buyW, buyY + 72.0f)) {
-                buyBasicUnit();
-            } else if (mx < panelX) {
-                dragActive_ = true;
-                dragStartX_ = dragEndX_ = mx;
-                dragStartY_ = dragEndY_ = my;
-            }
-        }
-
-        if (dragActive_ && engine.mouseDown(ra::MouseButton::Left)) {
-            dragEndX_ = mx;
-            dragEndY_ = my;
-        }
-
-        if (dragActive_ && engine.mouseReleased(ra::MouseButton::Left)) {
-            dragEndX_ = mx;
-            dragEndY_ = my;
-            const float ddx = dragEndX_ - dragStartX_;
-            const float ddy = dragEndY_ - dragStartY_;
-            const float dist2 = ddx * ddx + ddy * ddy;
-
-            if (dist2 <= 36.0f) {
-                ++resources_;
-                clickFx_.push_back({mx, my, 0.75f});
-                world_.selectPoint({screenToWorldX(mx), screenToWorldY(my)}, 24.0f / zoom_, false);
+        if(drag_&&e.mouseDown(ra::MouseButton::Left)){ ex_=mx; ey_=my; }
+        if(drag_&&e.mouseReleased(ra::MouseButton::Left)){
+            ex_=mx; ey_=my;
+            const float ddx=ex_-sx_, ddy=ey_-sy_;
+            if(ddx*ddx+ddy*ddy<=36){
+                ++resources_; clickFx_.push_back({mx,my,0.65f});
+                world_.selectPoint({screenToWorldX(mx),screenToWorldY(my)},22.0f/zoom_,false);
             } else {
-                const float l = screenToWorldX(std::min(dragStartX_, dragEndX_));
-                const float r = screenToWorldX(std::max(dragStartX_, dragEndX_));
-                const float t = screenToWorldY(std::min(dragStartY_, dragEndY_));
-                const float b = screenToWorldY(std::max(dragStartY_, dragEndY_));
-                world_.selectRect({l, t, r, b}, false);
+                world_.selectRect({screenToWorldX(std::min(sx_,ex_)),screenToWorldY(std::min(sy_,ey_)),screenToWorldX(std::max(sx_,ex_)),screenToWorldY(std::max(sy_,ey_))},false);
             }
-            dragActive_ = false;
+            drag_=false;
         }
-
-        if (engine.mousePressed(ra::MouseButton::Right) && mx < panelX) {
-            world_.commandMove({screenToWorldX(mx), screenToWorldY(my)}, 34.0f);
-        }
+        if(e.mousePressed(ra::MouseButton::Right)&&mx<panelX) world_.commandMove({screenToWorldX(mx),screenToWorldY(my)},30.0f);
 
         world_.update(dt);
+        for(auto& f:clickFx_){f.life-=dt;f.y-=28*dt;}
+        clickFx_.erase(std::remove_if(clickFx_.begin(),clickFx_.end(),[](const ClickFx& f){return f.life<=0;}),clickFx_.end());
+    }
 
-        for (ClickFx& fx : clickFx_) {
-            fx.life -= dt;
-            fx.y -= 28.0f * dt;
+    void renderSplash(ra::Engine& e)
+    {
+        const float w=(float)e.windowWidth(),h=(float)e.windowHeight();
+        e.clear({8,11,12,255});
+        e.drawText(w*0.5f-58,h*0.42f,"CLICK COMMAND",{245,238,205,255});
+        e.drawText(w*0.5f-72,h*0.47f,"MYSTIC WOODS BUILD",{150,180,155,255});
+        e.fillRect({w*0.5f-180,h*0.57f,360,12},{32,43,39,255});
+        e.fillRect({w*0.5f-180,h*0.57f,360*clampf(splash_/0.8f,0,1),12},{83,160,59,255});
+    }
+
+    void renderMenu(ra::Engine& e)
+    {
+        const float w=(float)e.windowWidth(),h=(float)e.windowHeight();
+        e.clear({10,15,13,255});
+        drawPreviewStrip(e,w*0.5f-256,h*0.18f);
+        e.drawText(w*0.5f-60,h*0.43f,"CLICK COMMAND",{244,236,202,255});
+        e.drawText(w*0.5f-132,h*0.48f,"RTS + CLICKER ECONOMY",{175,195,175,255});
+        const float bx=w*0.5f-210,by=h*0.58f;
+        const bool hot=inside(e.mouseX(),e.mouseY(),bx,by,bx+420,by+64);
+        e.fillRect({bx,by,420,64},hot?ra::Color{60,118,66,255}:ra::Color{44,92,52,255});
+        e.drawRect({bx,by,420,64},{132,165,134,255});
+        e.drawText(bx+172,by+28,"START GAME",{245,245,225,255});
+        e.drawText(w*0.5f-115,by+100,"ENTER Start    ESC Exit",{135,151,141,255});
+    }
+
+    void drawPreviewStrip(ra::Engine& e,float x,float y)
+    {
+        for(int row=0;row<5;++row) for(int col=0;col<16;++col){
+            ra::Texture* t=&grass_;
+            if(row==2) t=&dirt_;
+            else if(row==1) t=&dirtTop_;
+            else if(row==3) t=&dirtBottom_;
+            e.drawTexture(*t,{x+col*32.0f,y+row*32.0f,32,32});
         }
-        clickFx_.erase(
-            std::remove_if(clickFx_.begin(), clickFx_.end(), [](const ClickFx& fx) { return fx.life <= 0.0f; }),
-            clickFx_.end());
     }
 
-    void renderSplash(ra::Engine& engine)
+    void renderGame(ra::Engine& e)
     {
-        const float w = static_cast<float>(engine.windowWidth());
-        const float h = static_cast<float>(engine.windowHeight());
-        const float p = clampf(splashTime_ / 1.1f, 0.0f, 1.0f);
-        engine.clear({10, 14, 18, 255});
-        engine.drawText(w * 0.5f - 72.0f, h * 0.40f, "CLICK COMMAND", {240, 230, 186, 255});
-        engine.drawText(w * 0.5f - 86.0f, h * 0.45f, "PIXEL RTS + CLICKER", {149, 174, 149, 255});
-        engine.fillRect({w * 0.5f - 220.0f, h * 0.58f, 440.0f, 16.0f}, {35, 43, 48, 255});
-        engine.fillRect({w * 0.5f - 220.0f, h * 0.58f, 440.0f * p, 16.0f}, {185, 151, 57, 255});
-        engine.drawText(w * 0.5f - 28.0f, h * 0.62f, "LOADING", {200, 207, 204, 255});
+        const float viewW=hudX(e),viewH=(float)e.windowHeight();
+        e.clear({7,9,8,255});
+        drawTerrain(e,viewW,viewH);
+        drawBuildings(e);
+        drawUnits(e,viewW,viewH);
+        if(drag_){ const float l=std::min(sx_,ex_),r=std::max(sx_,ex_),t=std::min(sy_,ey_),b=std::max(sy_,ey_); e.drawRect({l,t,r-l,b-t},{114,240,118,255}); }
+        for(const auto& f:clickFx_) e.drawText(f.x-5,f.y,"+1",{250,219,70,255});
+        drawHud(e,viewW,viewH);
     }
 
-    void renderMenu(ra::Engine& engine)
+    void drawTerrain(ra::Engine& e,float viewW,float viewH)
     {
-        const float w = static_cast<float>(engine.windowWidth());
-        const float h = static_cast<float>(engine.windowHeight());
-        engine.clear({9, 13, 16, 255});
-
-        const float tile = 64.0f;
-        for (int y = 0; y < static_cast<int>(h / tile) + 1; ++y) {
-            for (int x = 0; x < static_cast<int>(w / tile) + 1; ++x) {
-                const ra::Texture& t = ((x + y) & 1) ? grassA_ : grassB_;
-                if (t) engine.drawTexture(t, {x * tile, y * tile, tile, tile});
-            }
-        }
-        engine.fillRect({0.0f, 0.0f, w, h}, {8, 12, 15, 145});
-
-        const float boxX = w * 0.5f - 290.0f;
-        const float boxY = h * 0.18f;
-        engine.fillRect({boxX, boxY, 580.0f, 540.0f}, {18, 25, 30, 240});
-        engine.drawRect({boxX, boxY, 580.0f, 540.0f}, {118, 104, 72, 255});
-        engine.drawText(boxX + 212.0f, boxY + 70.0f, "CLICK COMMAND", {239, 226, 181, 255});
-        engine.drawText(boxX + 174.0f, boxY + 110.0f, "RTS WITH CLICKER ECONOMY", {150, 166, 174, 255});
-        engine.drawText(boxX + 72.0f, boxY + 185.0f, "CLICK THE MAP TO GENERATE RESOURCES.", {196, 203, 199, 255});
-        engine.drawText(boxX + 72.0f, boxY + 215.0f, "UNITS MOVE, PATROL AND SEPARATE.", {196, 203, 199, 255});
-        engine.drawText(boxX + 72.0f, boxY + 245.0f, "BUY UNITS AND ISSUE RTS ORDERS.", {196, 203, 199, 255});
-
-        const float bx = w * 0.5f - 210.0f;
-        const float by = h * 0.55f;
-        const bool hot = inside(engine.mouseX(), engine.mouseY(), bx, by, bx + 420.0f, by + 66.0f);
-        engine.fillRect({bx, by, 420.0f, 66.0f}, hot ? ra::Color{79, 126, 73, 255} : ra::Color{55, 96, 61, 255});
-        engine.drawRect({bx, by, 420.0f, 66.0f}, {187, 170, 114, 255});
-        engine.drawText(bx + 168.0f, by + 29.0f, "START GAME", {246, 247, 243, 255});
-        engine.drawText(boxX + 185.0f, boxY + 490.0f, "ENTER Start    ESC Exit", {137, 150, 157, 255});
-    }
-
-    void renderGame(ra::Engine& engine)
-    {
-        const float panelX = hudX(engine);
-        const float h = static_cast<float>(engine.windowHeight());
-
-        engine.clear({8, 11, 13, 255});
-        drawWorld(engine, panelX, h);
-        drawBuildings(engine);
-        drawUnits(engine, panelX, h);
-
-        if (dragActive_) {
-            const float l = std::min(dragStartX_, dragEndX_);
-            const float r = std::max(dragStartX_, dragEndX_);
-            const float t = std::min(dragStartY_, dragEndY_);
-            const float b = std::max(dragStartY_, dragEndY_);
-            engine.drawRect({l, t, r - l, b - t}, {103, 235, 120, 255});
-        }
-
-        for (const ClickFx& fx : clickFx_) {
-            if (coinTex_) engine.drawTexture(coinTex_, {fx.x - 10.0f, fx.y - 13.0f, 18.0f, 18.0f});
-            engine.drawText(fx.x + 10.0f, fx.y - 7.0f, "+1", {239, 211, 82, 255});
-        }
-
-        drawHud(engine, panelX, h);
-    }
-
-    const ra::Texture& terrainTexture(int gx, int gy) const
-    {
-        if (gx >= 38 && gx <= 41) return water_;
-        if (gy >= 18 && gy <= 20) return dirt_;
-        if (gx < 5 || gy < 4 || gx > 59 || gy > 35) return forest_;
-        const unsigned hash = static_cast<unsigned>(gx * 73856093u) ^ static_cast<unsigned>(gy * 19349663u);
-        if ((hash % 53u) == 0u) return rock_;
-        if ((hash % 17u) == 0u) return flowers_;
-        return ((gx + gy) & 1) ? grassA_ : grassB_;
-    }
-
-    void drawWorld(ra::Engine& engine, float viewW, float viewH)
-    {
-        const float worldTile = 64.0f;
-        const float tile = worldTile * zoom_;
-        const int firstX = std::max(0, static_cast<int>(cameraX_ / worldTile));
-        const int firstY = std::max(0, static_cast<int>(cameraY_ / worldTile));
-        const int nx = static_cast<int>(viewW / tile) + 3;
-        const int ny = static_cast<int>(viewH / tile) + 3;
-
-        for (int y = firstY; y < firstY + ny; ++y) {
-            for (int x = firstX; x < firstX + nx; ++x) {
-                const float sx = (x * worldTile - cameraX_) * zoom_;
-                const float sy = (y * worldTile - cameraY_) * zoom_;
-                const auto& tex = terrainTexture(x, y);
-                if (tex) engine.drawTexture(tex, {sx, sy, tile + 1.0f, tile + 1.0f});
-                else engine.fillRect({sx, sy, tile + 1.0f, tile + 1.0f}, ((x + y) & 1) ? ra::Color{67, 105, 54, 255} : ra::Color{61, 96, 49, 255});
+        const int firstX=std::max(0,(int)std::floor(cameraX_/Tile)-1);
+        const int firstY=std::max(0,(int)std::floor(cameraY_/Tile)-1);
+        const int lastX=std::min(mapW_-1,firstX+(int)(viewW/(Tile*zoom_))+4);
+        const int lastY=std::min(mapH_-1,firstY+(int)(viewH/(Tile*zoom_))+4);
+        for(int ty=firstY;ty<=lastY;++ty){
+            for(int tx=firstX;tx<=lastX;++tx){
+                ra::Texture* tex=&grass_;
+                const bool hroad=(ty>=30&&ty<=33&&tx>=3&&tx<mapW_-3);
+                const bool vroad=(tx>=54&&tx<=57&&ty>=8&&ty<mapH_-4);
+                if(hroad){ if(ty==30) tex=&dirtTop_; else if(ty==33) tex=&dirtBottom_; else tex=&dirt_; }
+                if(vroad){ if(tx==54) tex=&dirtLeft_; else if(tx==57) tex=&dirtRight_; else tex=&dirt_; }
+                drawMapTile(e,*tex,tx,ty);
+                if(!hroad&&!vroad&&((tx*19+ty*37)%113==0||(tx*31+ty*11)%181==0)) drawMapTile(e,hill_,tx,ty);
             }
         }
     }
 
-    void drawBuilding(ra::Engine& engine, const ra::Texture& texture, float x, float y, float w, float h, ra::Color fallback)
+    void drawMapTile(ra::Engine& e,const ra::Texture& tex,int tx,int ty)
     {
-        const float sx = (x - cameraX_) * zoom_;
-        const float sy = (y - cameraY_) * zoom_;
-        const float sw = w * zoom_;
-        const float sh = h * zoom_;
-        if (texture) engine.drawTexture(texture, {sx, sy, sw, sh});
-        else engine.fillRect({sx, sy, sw, sh}, fallback);
+        const float s=Tile*zoom_;
+        e.drawTexture(tex,{(tx*Tile-cameraX_)*zoom_,(ty*Tile-cameraY_)*zoom_,s,s});
     }
 
-    void drawBuildings(ra::Engine& engine)
+    void drawBuilding(ra::Engine& e,int tx,int ty,int w,int h)
     {
-        drawBuilding(engine, baseTex_, baseX_ - 72.0f, baseY_ - 80.0f, 144.0f, 144.0f, {72, 78, 82, 255});
-        drawBuilding(engine, barracksTex_, baseX_ + 190.0f, baseY_ - 30.0f, 128.0f, 112.0f, {91, 73, 55, 255});
-        drawBuilding(engine, towerTex_, baseX_ - 260.0f, baseY_ - 155.0f, 80.0f, 128.0f, {75, 77, 70, 255});
-        drawBuilding(engine, towerTex_, baseX_ + 360.0f, baseY_ - 175.0f, 80.0f, 128.0f, {75, 77, 70, 255});
+        for(int y=0;y<h;++y) for(int x=0;x<w;++x){
+            const bool edge=x==0||y==0||x==w-1||y==h-1;
+            drawMapTile(e,edge?wall_:wood_,tx+x,ty+y);
+        }
     }
 
-    void drawUnits(ra::Engine& engine, float viewW, float viewH)
+    void drawBuildings(ra::Engine& e)
     {
-        const float size = std::max(18.0f, 34.0f * zoom_);
+        drawBuilding(e,24,18,6,5);
+        drawBuilding(e,34,20,5,4);
+        drawBuilding(e,18,22,4,4);
+        drawBuilding(e,42,15,3,3);
+        drawBuilding(e,42,27,3,3);
+        const float bx=(baseX_-cameraX_)*zoom_,by=(baseY_-cameraY_)*zoom_;
+        e.drawText(bx-20,by-72*zoom_,"BASE",{244,239,206,255});
+    }
 
-        for (const auto& u : world_.units()) {
-            const float sx = (u.position.x - cameraX_) * zoom_;
-            const float sy = (u.position.y - cameraY_) * zoom_;
-            if (sx < -size || sy < -size || sx > viewW + size || sy > viewH + size) continue;
-
-            if (u.selected) {
-                const float tx = (u.destination.x - cameraX_) * zoom_;
-                const float ty = (u.destination.y - cameraY_) * zoom_;
-                engine.drawLine(sx, sy, tx, ty, {88, 190, 105, 160});
-                engine.drawRect({sx - size * 0.64f, sy - size * 0.62f, size * 1.28f, size * 1.28f}, {99, 236, 116, 255});
+    void drawUnits(ra::Engine& e,float viewW,float viewH)
+    {
+        const float size=30.0f*zoom_;
+        for(const auto& u:world_.units()){
+            const float x=(u.position.x-cameraX_)*zoom_, y=(u.position.y-cameraY_)*zoom_;
+            if(x<-size||y<-size||x>viewW+size||y>viewH+size) continue;
+            if(u.selected){
+                const float tx=(u.destination.x-cameraX_)*zoom_,ty=(u.destination.y-cameraY_)*zoom_;
+                e.drawLine(x,y,tx,ty,{81,205,93,150});
+                e.drawRect({x-size*0.62f,y-size*0.62f,size*1.24f,size*1.24f},{90,240,104,255});
             }
-
-            if (unitTex_) engine.drawTexture(unitTex_, {sx - size * 0.5f, sy - size * 0.5f, size, size});
-            else engine.fillRect({sx - size * 0.35f, sy - size * 0.35f, size * 0.7f, size * 0.7f}, {215, 204, 157, 255});
+            e.drawTexture(unit_,{x-size*0.5f,y-size*0.5f,size,size});
         }
     }
 
-    void drawHud(ra::Engine& engine, float x, float h)
+    void drawHud(ra::Engine& e,float x,float h)
     {
-        const float panelW = static_cast<float>(engine.windowWidth()) - x;
-        engine.fillRect({x, 0.0f, panelW, h}, {17, 23, 28, 255});
-        engine.drawRect({x, 0.0f, panelW, h}, {96, 86, 68, 255});
-        engine.drawText(x + 20.0f, 22.0f, "CLICK COMMAND", {239, 226, 181, 255});
-        engine.drawText(x + 20.0f, 58.0f, "RESOURCES", {160, 174, 180, 255});
-        if (coinTex_) engine.drawTexture(coinTex_, {x + 20.0f, 82.0f, 28.0f, 28.0f});
-        engine.drawText(x + 58.0f, 91.0f, std::to_string(resources_), {239, 211, 82, 255});
-        engine.drawText(x + 20.0f, 124.0f, "MAP CLICK: +1", {138, 151, 158, 255});
+        const float pw=(float)e.windowWidth()-x;
+        e.fillRect({x,0,pw,h},{16,21,18,255});
+        e.drawText(x+20,20,"CLICK COMMAND",{244,237,207,255});
+        e.drawText(x+20,54,"RESOURCES",{155,172,160,255});
+        e.drawText(x+20,78,std::to_string(resources_),{244,210,69,255});
+        e.drawText(x+20,104,"CLICK MAP: +1",{125,146,132,255});
 
-        const int cost = nextUnitCost();
-        const bool canBuy = resources_ >= cost;
-        const float buyX = x + 20.0f;
-        const float buyY = 160.0f;
-        const float buyW = panelW - 40.0f;
-        const bool hot = inside(engine.mouseX(), engine.mouseY(), buyX, buyY, buyX + buyW, buyY + 72.0f);
+        const int cost=nextUnitCost(); const bool can=resources_>=cost;
+        const float bx=x+20,by=150,bw=pw-40;
+        e.fillRect({bx,by,bw,72},can?ra::Color{45,95,53,255}:ra::Color{48,53,49,255});
+        e.drawRect({bx,by,bw,72},{104,132,110,255});
+        e.drawTexture(unit_,{bx+14,by+12,42,42});
+        e.drawText(bx+70,by+18,"BASIC UNIT",{239,239,217,255});
+        e.drawText(bx+70,by+44,("COST: "+std::to_string(cost)).c_str(),can?ra::Color{244,210,69,255}:ra::Color{130,135,130,255});
 
-        ra::Color buttonColor = canBuy ? ra::Color{55, 110, 70, 255} : ra::Color{68, 70, 72, 255};
-        if (hot && canBuy) buttonColor = {72, 137, 87, 255};
-        engine.fillRect({buyX, buyY, buyW, 72.0f}, buttonColor);
-        engine.drawRect({buyX, buyY, buyW, 72.0f}, {144, 155, 158, 255});
-        if (unitTex_) engine.drawTexture(unitTex_, {buyX + 12.0f, buyY + 10.0f, 50.0f, 50.0f});
-        engine.drawText(buyX + 76.0f, buyY + 17.0f, "BASIC UNIT", {244, 245, 239, 255});
-        engine.drawText(buyX + 76.0f, buyY + 43.0f, ("COST: " + std::to_string(cost)).c_str(), canBuy ? ra::Color{239, 211, 82, 255} : ra::Color{160, 160, 160, 255});
+        e.drawText(x+20,248,("UNITS: "+std::to_string(world_.units().size())).c_str(),{190,201,193,255});
+        e.drawText(x+20,272,("SELECTED: "+std::to_string(world_.selectedCount())).c_str(),{190,201,193,255});
+        e.drawText(x+20,296,"UNIT AI: ACTIVE",{95,214,110,255});
+        e.drawText(x+20,320,"COST GROWTH: 18%",{150,165,154,255});
+        e.drawText(x+20,368,"LMB       +1 resource",{158,174,163,255});
+        e.drawText(x+20,392,"DRAG LMB  select",{158,174,163,255});
+        e.drawText(x+20,416,"RMB       move",{158,174,163,255});
+        e.drawText(x+20,440,"WASD      camera",{158,174,163,255});
+        e.drawText(x+20,464,"WHEEL     zoom",{158,174,163,255});
 
-        engine.drawText(x + 20.0f, 258.0f, ("UNITS: " + std::to_string(world_.units().size())).c_str(), {190, 201, 205, 255});
-        engine.drawText(x + 20.0f, 282.0f, ("SELECTED: " + std::to_string(world_.selectedCount())).c_str(), {190, 201, 205, 255});
-        engine.drawText(x + 20.0f, 306.0f, "UNIT AI: ACTIVE", {103, 216, 120, 255});
-        engine.drawText(x + 20.0f, 330.0f, "COST: +18% / UNIT", {150, 163, 169, 255});
-
-        engine.drawText(x + 20.0f, 376.0f, "CONTROLS", {235, 238, 236, 255});
-        engine.drawText(x + 20.0f, 404.0f, "LMB MAP   +1 resource", {165, 177, 183, 255});
-        engine.drawText(x + 20.0f, 428.0f, "DRAG LMB  Select units", {165, 177, 183, 255});
-        engine.drawText(x + 20.0f, 452.0f, "RMB       Move selected", {165, 177, 183, 255});
-        engine.drawText(x + 20.0f, 476.0f, "WASD      Pan camera", {165, 177, 183, 255});
-        engine.drawText(x + 20.0f, 500.0f, "WHEEL     Zoom", {165, 177, 183, 255});
-        engine.drawText(x + 20.0f, 524.0f, "ESC       Main menu", {165, 177, 183, 255});
-
-        const float miniX = x + 20.0f;
-        const float miniY = h - 190.0f;
-        const float miniW = panelW - 40.0f;
-        const float miniH = 130.0f;
-        engine.drawText(miniX, miniY - 22.0f, "MINIMAP", {235, 238, 236, 255});
-        engine.fillRect({miniX, miniY, miniW, miniH}, {43, 76, 43, 255});
-        const float riverX = miniX + (38.0f * 64.0f / worldW_) * miniW;
-        const float riverW = (4.0f * 64.0f / worldW_) * miniW;
-        engine.fillRect({riverX, miniY, riverW, miniH}, {40, 88, 112, 255});
-
-        for (const auto& u : world_.units()) {
-            const float ux = miniX + (u.position.x / worldW_) * miniW;
-            const float uy = miniY + (u.position.y / worldH_) * miniH;
-            engine.fillRect({ux - 1.0f, uy - 1.0f, 3.0f, 3.0f}, u.selected ? ra::Color{103, 235, 120, 255} : ra::Color{235, 224, 179, 255});
+        const float mx=x+20,my=h-180,mw=pw-40,mh=120;
+        e.drawText(mx,my-20,"MINIMAP",{220,224,210,255});
+        e.fillRect({mx,my,mw,mh},{50,95,51,255});
+        for(const auto& u:world_.units()){
+            e.fillRect({mx+u.position.x/worldW_*mw-1,my+u.position.y/worldH_*mh-1,3,3},u.selected?ra::Color{88,245,104,255}:ra::Color{238,229,182,255});
         }
-
-        const float vx = cameraX_ / worldW_ * miniW;
-        const float vy = cameraY_ / worldH_ * miniH;
-        const float vw = std::min(miniW, (hudX(engine) / zoom_) / worldW_ * miniW);
-        const float vh = std::min(miniH, (static_cast<float>(engine.windowHeight()) / zoom_) / worldH_ * miniH);
-        engine.drawRect({miniX + vx, miniY + vy, std::max(7.0f, vw), std::max(7.0f, vh)}, {237, 239, 216, 255});
+        e.drawRect({mx+cameraX_/worldW_*mw,my+cameraY_/worldH_*mh,std::max(8.0f,(hudX(e)/zoom_)/worldW_*mw),std::max(8.0f,((float)e.windowHeight()/zoom_)/worldH_*mh)},{240,240,220,255});
     }
 
-    float hudX(const ra::Engine& engine) const
-    {
-        return static_cast<float>(engine.windowWidth()) - 330.0f;
+    float hudX(const ra::Engine& e) const { return (float)e.windowWidth()-320.0f; }
+    float screenToWorldX(float x) const { return cameraX_+x/zoom_; }
+    float screenToWorldY(float y) const { return cameraY_+y/zoom_; }
+    void clampCamera(const ra::Engine& e){
+        const float vw=hudX(e)/zoom_,vh=(float)e.windowHeight()/zoom_;
+        cameraX_=clampf(cameraX_,0,std::max(0.0f,worldW_-vw));
+        cameraY_=clampf(cameraY_,0,std::max(0.0f,worldH_-vh));
     }
 
-    float screenToWorldX(float sx) const
-    {
-        return cameraX_ + sx / zoom_;
-    }
-
-    float screenToWorldY(float sy) const
-    {
-        return cameraY_ + sy / zoom_;
-    }
-
-    void clampCamera(const ra::Engine& engine)
-    {
-        const float visibleW = hudX(engine) / zoom_;
-        const float visibleH = static_cast<float>(engine.windowHeight()) / zoom_;
-        cameraX_ = clampf(cameraX_, 0.0f, std::max(0.0f, worldW_ - visibleW));
-        cameraY_ = clampf(cameraY_, 0.0f, std::max(0.0f, worldH_ - visibleH));
-    }
-
-    Screen screen_{Screen::Splash};
-    float splashTime_{0.0f};
-    int resources_{0};
-    ra::rts::World world_{{0.0f, 0.0f, 4200.0f, 2600.0f}};
-    std::vector<ClickFx> clickFx_;
-    float worldW_{4200.0f};
-    float worldH_{2600.0f};
-    float cameraX_{0.0f};
-    float cameraY_{0.0f};
-    float zoom_{1.0f};
-    bool dragActive_{false};
-    float dragStartX_{0.0f};
-    float dragStartY_{0.0f};
-    float dragEndX_{0.0f};
-    float dragEndY_{0.0f};
-    const float baseX_{980.0f};
-    const float baseY_{760.0f};
-    const int baseUnitCost_{10};
-    const double unitCostGrowth_{1.18};
-
-    ra::Texture grassA_{};
-    ra::Texture grassB_{};
-    ra::Texture dirt_{};
-    ra::Texture flowers_{};
-    ra::Texture forest_{};
-    ra::Texture rock_{};
-    ra::Texture water_{};
-    ra::Texture baseTex_{};
-    ra::Texture barracksTex_{};
-    ra::Texture towerTex_{};
-    ra::Texture unitTex_{};
-    ra::Texture coinTex_{};
+    Screen screen_{Screen::Splash}; float splash_{0}; int resources_{0};
+    ra::rts::World world_{{0,0,4096,2560}}; std::vector<ClickFx> clickFx_;
+    float cameraX_{0};
+    float cameraY_{0};
+    float zoom_{1}; bool drag_{false}; float sx_{0},sy_{0},ex_{0},ey_{0};
+    static constexpr int mapW_=128,mapH_=80;
+    const float worldW_=mapW_*Tile,worldH_=mapH_*Tile;
+    const float baseX_=26*Tile,baseY_=20*Tile;
+    const int baseCost_=10; const double costGrowth_=1.18;
+    ra::Texture grass_,dirt_,dirtTop_,dirtBottom_,dirtLeft_,dirtRight_,hill_,wall_,wood_,unit_;
 };
 
 int main()
 {
-    ra::EngineConfig config;
-    config.title = "Click Command";
-    config.width = 1440;
-    config.height = 900;
-    config.resizable = true;
-    config.vsync = true;
-
-    try {
-        ra::Engine engine(config);
-        ClickerRTS app;
-        return engine.run(app);
-    } catch (const std::exception& e) {
-        std::fprintf(stderr, "Startup failed: %s\n", e.what());
-        return 1;
-    }
+    ra::EngineConfig c; c.title="Click Command"; c.width=1440; c.height=900; c.resizable=true; c.vsync=true;
+    try { ra::Engine e(c); ClickerRTS game; return e.run(game); }
+    catch(const std::exception& ex){ std::fprintf(stderr,"Startup failed: %s\n",ex.what()); return 1; }
 }
