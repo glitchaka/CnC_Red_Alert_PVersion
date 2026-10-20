@@ -108,6 +108,7 @@ public:
     void fillRect(Rect rect, Color color);
     void drawRect(Rect rect, Color color);
     void drawLine(float x1, float y1, float x2, float y2, Color color);
+    void drawText(float x, float y, const std::string& text, Color color);
 
     Texture createTextureRGBA(const unsigned char* rgba, int width, int height);
     Texture loadTexture(const std::string& path);
