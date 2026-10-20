@@ -1,0 +1,1 @@
+Click Command visual asset set. Terrain base uses Mystic Woods plains 16x16 tiles. Cells containing the 'Premium' label are intentionally not used. Buildings and units are original game-specific sprites inspired by the provided pixel-art references.
