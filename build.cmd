@@ -9,6 +9,7 @@ if errorlevel 1 (
 )
 
 if exist "RA-Framework.exe" del /q "RA-Framework.exe" >nul 2>nul
+if exist "build\bin\Release\assets" rmdir /s /q "build\bin\Release\assets" >nul 2>nul
 
 cmake -S . -B build -A x64
 if errorlevel 1 goto :error
@@ -22,9 +23,14 @@ if not exist "build\bin\Release\ra_sandbox.exe" (
 )
 
 copy /y "build\bin\Release\ra_sandbox.exe" "RA-Framework.exe" >nul
-if exist "build\bin\Release\assets" (
-    if exist "assets" rmdir /s /q "assets"
-    xcopy /e /i /y "build\bin\Release\assets" "assets" >nul
+
+if not exist "assets\mystic\plains.png" (
+    echo ERROR: falta assets\mystic\plains.png. Ejecuta git pull nuevamente.
+    exit /b 1
+)
+if not exist "assets\bit-bonanza\People.png" (
+    echo ERROR: faltan los assets originales de Bit Bonanza.
+    exit /b 1
 )
 
 echo.
