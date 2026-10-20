@@ -1,5 +1,6 @@
 add_library(ra_engine STATIC
     src/Engine.cpp
+    src/RTS.cpp
 )
 add_library(RA::Engine ALIAS ra_engine)
 
