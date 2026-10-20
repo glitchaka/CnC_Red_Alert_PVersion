@@ -301,6 +301,12 @@ void Engine::drawLine(float x1, float y1, float x2, float y2, Color color)
     SDL_RenderLine(impl_->renderer, x1, y1, x2, y2);
 }
 
+void Engine::drawText(float x, float y, const std::string& text, Color color)
+{
+    SDL_SetRenderDrawColor(impl_->renderer, color.r, color.g, color.b, color.a);
+    SDL_RenderDebugText(impl_->renderer, x, y, text.c_str());
+}
+
 Texture Engine::createTextureRGBA(const unsigned char* rgba, int width, int height)
 {
     if (!rgba || width <= 0 || height <= 0) {
