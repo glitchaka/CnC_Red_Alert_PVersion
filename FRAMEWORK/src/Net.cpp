@@ -137,7 +137,8 @@ bool waitForSocket(SOCKET socket, bool write, long timeoutMs)
     return result > 0;
 }
 
-bool relaySendAll(DatagramSocket::Impl& impl, const char* data, std::size_t size)
+template <typename ImplT>
+bool relaySendAll(ImplT& impl, const char* data, std::size_t size)
 {
     if (impl.relaySocket == INVALID_SOCKET) return false;
 
@@ -166,12 +167,14 @@ bool relaySendAll(DatagramSocket::Impl& impl, const char* data, std::size_t size
     return true;
 }
 
-bool relaySendAll(DatagramSocket::Impl& impl, const std::string& data)
+template <typename ImplT>
+bool relaySendAll(ImplT& impl, const std::string& data)
 {
     return relaySendAll(impl, data.data(), data.size());
 }
 
-bool relayPublish(DatagramSocket::Impl& impl, const std::string& subject, const void* data, std::size_t size)
+template <typename ImplT>
+bool relayPublish(ImplT& impl, const std::string& subject, const void* data, std::size_t size)
 {
     if (impl.relaySocket == INVALID_SOCKET || !data || size == 0 || size > 1024u * 1024u) return false;
 
@@ -184,7 +187,8 @@ bool relayPublish(DatagramSocket::Impl& impl, const std::string& subject, const 
     return relaySendAll(impl, packet);
 }
 
-std::string makeRelayEnvelope(const DatagramSocket::Impl& impl, const void* data, std::size_t size)
+template <typename ImplT>
+std::string makeRelayEnvelope(const ImplT& impl, const void* data, std::size_t size)
 {
     std::string envelope;
     envelope.reserve(RelayEnvelopeHeader + size);
@@ -196,7 +200,8 @@ std::string makeRelayEnvelope(const DatagramSocket::Impl& impl, const void* data
     return envelope;
 }
 
-void queueRelayEnvelope(DatagramSocket::Impl& impl, const std::string& payload)
+template <typename ImplT>
+void queueRelayEnvelope(ImplT& impl, const std::string& payload)
 {
     if (payload.size() < RelayEnvelopeHeader) return;
     if (std::memcmp(payload.data(), RelayMagic, sizeof(RelayMagic)) != 0) return;
@@ -209,14 +214,15 @@ void queueRelayEnvelope(DatagramSocket::Impl& impl, const std::string& payload)
     const std::uint16_t senderPort = ntohs(networkPort);
     if (senderPort == 0) return;
 
-    DatagramSocket::Impl::RelayPacket packet;
+    typename ImplT::RelayPacket packet;
     packet.from.address = "nats:" + senderId;
     packet.from.port = senderPort;
     packet.data.assign(payload.data() + RelayEnvelopeHeader, payload.size() - RelayEnvelopeHeader);
     impl.relayPackets.push_back(std::move(packet));
 }
 
-void parseRelayInput(DatagramSocket::Impl& impl)
+template <typename ImplT>
+void parseRelayInput(ImplT& impl)
 {
     while (!impl.relayRx.empty()) {
         if (impl.relayRx.rfind("PING\r\n", 0) == 0) {
@@ -277,7 +283,8 @@ void parseRelayInput(DatagramSocket::Impl& impl)
     }
 }
 
-void pollRelay(DatagramSocket::Impl& impl)
+template <typename ImplT>
+void pollRelay(ImplT& impl)
 {
     if (impl.relaySocket == INVALID_SOCKET) return;
 
@@ -305,14 +312,16 @@ void pollRelay(DatagramSocket::Impl& impl)
     parseRelayInput(impl);
 }
 
-void unsubscribeRelayDiscovery(DatagramSocket::Impl& impl)
+template <typename ImplT>
+void unsubscribeRelayDiscovery(ImplT& impl)
 {
     if (!impl.relayDiscoverySubscribed || impl.relaySocket == INVALID_SOCKET) return;
     relaySendAll(impl, "UNSUB 1\r\n", 9);
     impl.relayDiscoverySubscribed = false;
 }
 
-void tryOpenRelay(DatagramSocket::Impl& impl, bool subscribeDiscovery)
+template <typename ImplT>
+void tryOpenRelay(ImplT& impl, bool subscribeDiscovery)
 {
     if (relayDisabled()) return;
 
@@ -458,9 +467,9 @@ bool DatagramSocket::open(std::uint16_t port, bool allowBroadcast)
         impl_->port = port;
     }
 
-    // The existing UDP path remains primary. Every socket also tries an outbound
-    // NATS connection so LAN discovery transparently gains an Internet fallback.
-    // A fixed-port socket is treated as a waiting host; an ephemeral socket is a client.
+    // Keep the existing UDP path as the fast path. Every socket also attempts
+    // an outbound relay connection so LAN discovery gets an Internet fallback
+    // without changing the game protocol or requiring port forwarding.
     tryOpenRelay(*impl_, port != 0);
 
     return true;
