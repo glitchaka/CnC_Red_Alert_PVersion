@@ -28,7 +28,7 @@ set_target_properties(ra_engine PROPERTIES
 
 if(RA_BUILD_SANDBOX)
     add_executable(ra_sandbox
-        ${CMAKE_SOURCE_DIR}/examples/integrated_gameplay.cpp
+        ${CMAKE_SOURCE_DIR}/examples/click_command.cpp
     )
     target_link_libraries(ra_sandbox PRIVATE RA::Engine)
     if(WIN32)
