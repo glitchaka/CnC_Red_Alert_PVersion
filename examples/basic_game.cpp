@@ -1,20 +1,29 @@
 #include <ra/Engine.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
 #include <exception>
 #include <iostream>
+#include <random>
 #include <vector>
 
 namespace {
 
 struct Unit {
-    float x;
-    float y;
-    float targetX;
-    float targetY;
+    float x{0.0f};
+    float y{0.0f};
+    float targetX{0.0f};
+    float targetY{0.0f};
+    float speed{70.0f};
     bool selected{false};
 };
+
+float clampf(float value, float lo, float hi)
+{
+    return std::max(lo, std::min(value, hi));
+}
 
 float distanceSquared(float ax, float ay, float bx, float by)
 {
@@ -23,24 +32,20 @@ float distanceSquared(float ax, float ay, float bx, float by)
     return dx * dx + dy * dy;
 }
 
+bool inside(float x, float y, float l, float t, float r, float b)
+{
+    return x >= l && x <= r && y >= t && y <= b;
+}
+
 } // namespace
 
 class SandboxGame final : public ra::Game {
 public:
     void onStart(ra::Engine& engine) override
     {
-        units_ = {
-            {170.0f, 150.0f, 170.0f, 150.0f},
-            {235.0f, 190.0f, 235.0f, 190.0f},
-            {320.0f, 145.0f, 320.0f, 145.0f},
-            {430.0f, 225.0f, 430.0f, 225.0f},
-            {520.0f, 175.0f, 520.0f, 175.0f},
-            {610.0f, 250.0f, 610.0f, 250.0f},
-            {260.0f, 335.0f, 260.0f, 335.0f},
-            {380.0f, 390.0f, 380.0f, 390.0f},
-            {525.0f, 360.0f, 525.0f, 360.0f},
-            {680.0f, 410.0f, 680.0f, 410.0f},
-        };
+        worldWidth_ = 4200.0f;
+        worldHeight_ = 2600.0f;
+        spawnUnits(stressLevels_[stressIndex_]);
 
         try {
             hudBar_ = engine.loadTexture("assets/kenney/hud_bar.png");
@@ -53,136 +58,92 @@ public:
     {
         if (engine.keyDown(ra::Key::Escape)) {
             engine.quit();
+            return;
         }
 
         if (engine.keyPressed(ra::Key::Space)) {
-            showGrid_ = !showGrid_;
+            stressIndex_ = (stressIndex_ + 1) % stressLevels_.size();
+            spawnUnits(stressLevels_[stressIndex_]);
         }
 
-        if (engine.mousePressed(ra::MouseButton::Left)) {
-            selectUnitAt(engine.mouseX(), engine.mouseY());
-        }
-
-        if (engine.mousePressed(ra::MouseButton::Right)) {
-            issueMoveCommand(engine.mouseX(), engine.mouseY(), engine.windowWidth());
-        }
-
-        float keyboardX = 0.0f;
-        float keyboardY = 0.0f;
-        if (engine.keyDown(ra::Key::A) || engine.keyDown(ra::Key::Left)) keyboardX -= 1.0f;
-        if (engine.keyDown(ra::Key::D) || engine.keyDown(ra::Key::Right)) keyboardX += 1.0f;
-        if (engine.keyDown(ra::Key::W) || engine.keyDown(ra::Key::Up)) keyboardY -= 1.0f;
-        if (engine.keyDown(ra::Key::S) || engine.keyDown(ra::Key::Down)) keyboardY += 1.0f;
-
-        const float keyboardSpeed = 150.0f * dt;
-        for (auto& unit : units_) {
-            if (unit.selected && (keyboardX != 0.0f || keyboardY != 0.0f)) {
-                unit.targetX += keyboardX * keyboardSpeed;
-                unit.targetY += keyboardY * keyboardSpeed;
+        if (engine.keyPressed(ra::Key::Enter)) {
+            for (auto& unit : units_) {
+                unit.selected = true;
             }
+        }
 
+        const float cameraSpeed = 650.0f * dt;
+        if (engine.keyDown(ra::Key::A) || engine.keyDown(ra::Key::Left)) cameraX_ -= cameraSpeed;
+        if (engine.keyDown(ra::Key::D) || engine.keyDown(ra::Key::Right)) cameraX_ += cameraSpeed;
+        if (engine.keyDown(ra::Key::W) || engine.keyDown(ra::Key::Up)) cameraY_ -= cameraSpeed;
+        if (engine.keyDown(ra::Key::S) || engine.keyDown(ra::Key::Down)) cameraY_ += cameraSpeed;
+
+        cameraX_ = clampf(cameraX_, 0.0f, std::max(0.0f, worldWidth_ - viewWidth(engine)));
+        cameraY_ = clampf(cameraY_, 0.0f, std::max(0.0f, worldHeight_ - viewHeight(engine)));
+
+        if (engine.mousePressed(ra::MouseButton::Left) && engine.mouseX() < hudX(engine)) {
+            draggingSelection_ = true;
+            selectionStartX_ = engine.mouseX();
+            selectionStartY_ = engine.mouseY();
+            selectionEndX_ = selectionStartX_;
+            selectionEndY_ = selectionStartY_;
+        }
+
+        if (draggingSelection_ && engine.mouseDown(ra::MouseButton::Left)) {
+            selectionEndX_ = engine.mouseX();
+            selectionEndY_ = engine.mouseY();
+        }
+
+        if (draggingSelection_ && engine.mouseReleased(ra::MouseButton::Left)) {
+            selectionEndX_ = engine.mouseX();
+            selectionEndY_ = engine.mouseY();
+            finalizeSelection();
+            draggingSelection_ = false;
+        }
+
+        if (engine.mousePressed(ra::MouseButton::Right) && engine.mouseX() < hudX(engine)) {
+            issueMoveCommand(screenToWorldX(engine.mouseX()), screenToWorldY(engine.mouseY()));
+        }
+
+        for (std::size_t i = 0; i < units_.size(); ++i) {
+            auto& unit = units_[i];
             const float dx = unit.targetX - unit.x;
             const float dy = unit.targetY - unit.y;
-            const float distance = std::sqrt(dx * dx + dy * dy);
-            if (distance > 1.0f) {
-                const float step = std::min(distance, 105.0f * dt);
-                unit.x += dx / distance * step;
-                unit.y += dy / distance * step;
+            const float distSq = dx * dx + dy * dy;
+
+            if (distSq < 16.0f) {
+                if (!unit.selected) {
+                    retargetWander(unit, i);
+                }
+                continue;
             }
+
+            const float distance = std::sqrt(distSq);
+            const float step = std::min(distance, unit.speed * dt);
+            unit.x += dx / distance * step;
+            unit.y += dy / distance * step;
         }
+
+        // Smoothed frame metrics for the HUD.
+        const float frameMs = dt * 1000.0f;
+        smoothedFrameMs_ = smoothedFrameMs_ * 0.92f + frameMs * 0.08f;
+        peakFrameMs_ = std::max(frameMs, peakFrameMs_ * 0.995f);
     }
 
     void onRender(ra::Engine& engine) override
     {
         const float width = static_cast<float>(engine.windowWidth());
         const float height = static_cast<float>(engine.windowHeight());
-        const float hudWidth = 270.0f;
-        const float mapLeft = 18.0f;
-        const float mapTop = 18.0f;
-        const float mapRight = std::max(mapLeft + 200.0f, width - hudWidth - 18.0f);
-        const float mapBottom = std::max(mapTop + 200.0f, height - 18.0f);
+        const float hudWidth = 300.0f;
+        const float mapRight = width - hudWidth;
 
-        engine.clear({11, 14, 17, 255});
+        engine.clear({8, 11, 13, 255});
+        engine.fillRect({0.0f, 0.0f, mapRight, height}, {42, 57, 40, 255});
 
-        // Playfield.
-        engine.fillRect({mapLeft, mapTop, mapRight - mapLeft, mapBottom - mapTop}, {50, 67, 48, 255});
-
-        if (showGrid_) {
-            constexpr float tile = 48.0f;
-            for (float y = mapTop; y < mapBottom; y += tile) {
-                for (float x = mapLeft; x < mapRight; x += tile) {
-                    const int ix = static_cast<int>((x - mapLeft) / tile);
-                    const int iy = static_cast<int>((y - mapTop) / tile);
-                    const ra::Color color = ((ix + iy) & 1)
-                        ? ra::Color{59, 78, 56, 255}
-                        : ra::Color{54, 72, 52, 255};
-                    engine.fillRect({x, y, tile - 1.0f, tile - 1.0f}, color);
-                }
-            }
-        }
-
-        // A road and a water strip make the map visually readable.
-        engine.fillRect({mapLeft + 20.0f, mapTop + 470.0f, mapRight - mapLeft - 40.0f, 72.0f}, {82, 77, 66, 255});
-        engine.fillRect({mapLeft + 720.0f, mapTop + 20.0f, 90.0f, std::max(100.0f, mapBottom - mapTop - 40.0f)}, {35, 66, 82, 255});
-
-        // Units and selection feedback.
-        for (const auto& unit : units_) {
-            if (unit.selected) {
-                engine.drawRect({unit.x - 18.0f, unit.y - 18.0f, 36.0f, 36.0f}, {114, 235, 118, 255});
-                engine.drawRect({unit.x - 20.0f, unit.y - 20.0f, 40.0f, 40.0f}, {40, 130, 55, 255});
-            }
-
-            engine.fillRect({unit.x - 12.0f, unit.y - 10.0f, 24.0f, 20.0f}, {181, 187, 162, 255});
-            engine.fillRect({unit.x - 3.0f, unit.y - 16.0f, 6.0f, 13.0f}, {211, 215, 196, 255});
-            engine.fillRect({unit.x - 8.0f, unit.y + 10.0f, 16.0f, 3.0f}, {31, 37, 32, 255});
-
-            if (unit.selected && distanceSquared(unit.x, unit.y, unit.targetX, unit.targetY) > 9.0f) {
-                engine.drawRect({unit.targetX - 5.0f, unit.targetY - 5.0f, 10.0f, 10.0f}, {111, 205, 255, 255});
-            }
-        }
-
-        // HUD panel.
-        const float hudX = width - hudWidth;
-        engine.fillRect({hudX, 0.0f, hudWidth, height}, {18, 24, 29, 255});
-        engine.fillRect({hudX + 12.0f, 12.0f, hudWidth - 24.0f, 52.0f}, {25, 38, 48, 255});
-
-        if (hudBar_) {
-            engine.drawTexture(hudBar_, {hudX + 20.0f, 24.0f, hudWidth - 40.0f, 28.0f});
-            engine.drawTexture(hudBar_, {hudX + 20.0f, 104.0f, hudWidth - 40.0f, 24.0f});
-            engine.drawTexture(hudBar_, {hudX + 20.0f, 228.0f, hudWidth - 40.0f, 24.0f});
-        }
-
-        // Selected-unit count as lit slots.
-        int selectedCount = 0;
-        for (const auto& unit : units_) {
-            if (unit.selected) ++selectedCount;
-        }
-        for (int i = 0; i < 10; ++i) {
-            engine.fillRect(
-                {hudX + 22.0f + static_cast<float>(i % 5) * 42.0f,
-                 146.0f + static_cast<float>(i / 5) * 38.0f,
-                 30.0f,
-                 26.0f},
-                i < selectedCount ? ra::Color{92, 181, 105, 255} : ra::Color{42, 54, 61, 255});
-        }
-
-        // Live input feedback: LMB, RMB, keyboard movement.
-        const bool left = engine.mouseDown(ra::MouseButton::Left);
-        const bool right = engine.mouseDown(ra::MouseButton::Right);
-        const bool moving = engine.keyDown(ra::Key::W) || engine.keyDown(ra::Key::A) ||
-                            engine.keyDown(ra::Key::S) || engine.keyDown(ra::Key::D) ||
-                            engine.keyDown(ra::Key::Up) || engine.keyDown(ra::Key::Down) ||
-                            engine.keyDown(ra::Key::Left) || engine.keyDown(ra::Key::Right);
-
-        engine.fillRect({hudX + 24.0f, 276.0f, 62.0f, 28.0f}, left ? ra::Color{76, 196, 99, 255} : ra::Color{48, 58, 64, 255});
-        engine.fillRect({hudX + 102.0f, 276.0f, 62.0f, 28.0f}, right ? ra::Color{87, 151, 224, 255} : ra::Color{48, 58, 64, 255});
-        engine.fillRect({hudX + 180.0f, 276.0f, 62.0f, 28.0f}, moving ? ra::Color{226, 181, 76, 255} : ra::Color{48, 58, 64, 255});
-
-        // Mouse marker on the playfield.
-        if (engine.mouseX() < hudX) {
-            engine.fillRect({engine.mouseX() - 7.0f, engine.mouseY() - 1.0f, 14.0f, 2.0f}, {240, 240, 220, 255});
-            engine.fillRect({engine.mouseX() - 1.0f, engine.mouseY() - 7.0f, 2.0f, 14.0f}, {240, 240, 220, 255});
-        }
+        drawWorld(engine, mapRight, height);
+        drawUnits(engine, mapRight, height);
+        drawSelection(engine);
+        drawHud(engine, hudWidth, mapRight, height);
     }
 
     void onStop(ra::Engine& engine) override
@@ -191,58 +152,239 @@ public:
     }
 
 private:
-    void selectUnitAt(float x, float y)
+    float hudX(const ra::Engine& engine) const
     {
-        int hit = -1;
-        float best = 24.0f * 24.0f;
-        for (int i = 0; i < static_cast<int>(units_.size()); ++i) {
-            const float d = distanceSquared(x, y, units_[i].x, units_[i].y);
-            if (d <= best) {
-                best = d;
-                hit = i;
-            }
-        }
-
-        for (auto& unit : units_) {
-            unit.selected = false;
-        }
-        if (hit >= 0) {
-            units_[hit].selected = true;
-        }
+        return static_cast<float>(engine.windowWidth()) - 300.0f;
     }
 
-    void issueMoveCommand(float x, float y, int windowWidth)
+    float viewWidth(const ra::Engine& engine) const
     {
-        const float hudX = static_cast<float>(windowWidth) - 270.0f;
-        if (x >= hudX) {
+        return std::max(320.0f, hudX(engine));
+    }
+
+    float viewHeight(const ra::Engine& engine) const
+    {
+        return static_cast<float>(engine.windowHeight());
+    }
+
+    float screenToWorldX(float x) const { return x + cameraX_; }
+    float screenToWorldY(float y) const { return y + cameraY_; }
+
+    void spawnUnits(std::size_t count)
+    {
+        units_.clear();
+        units_.reserve(count);
+
+        std::mt19937 rng(0xC0FFEEu + static_cast<unsigned>(count));
+        std::uniform_real_distribution<float> xDist(24.0f, worldWidth_ - 24.0f);
+        std::uniform_real_distribution<float> yDist(24.0f, worldHeight_ - 24.0f);
+        std::uniform_real_distribution<float> speedDist(45.0f, 115.0f);
+
+        for (std::size_t i = 0; i < count; ++i) {
+            Unit unit;
+            unit.x = xDist(rng);
+            unit.y = yDist(rng);
+            unit.targetX = xDist(rng);
+            unit.targetY = yDist(rng);
+            unit.speed = speedDist(rng);
+            units_.push_back(unit);
+        }
+
+        peakFrameMs_ = 0.0f;
+        smoothedFrameMs_ = 0.0f;
+    }
+
+    void retargetWander(Unit& unit, std::size_t index)
+    {
+        const float a = static_cast<float>((index * 37u) % 628u) * 0.01f;
+        const float b = static_cast<float>((index * 53u) % 628u) * 0.01f;
+        unit.targetX = clampf(unit.x + std::cos(a + wanderPhase_) * 320.0f, 8.0f, worldWidth_ - 8.0f);
+        unit.targetY = clampf(unit.y + std::sin(b + wanderPhase_) * 260.0f, 8.0f, worldHeight_ - 8.0f);
+        wanderPhase_ += 0.00017f;
+    }
+
+    void finalizeSelection()
+    {
+        const float l = std::min(selectionStartX_, selectionEndX_);
+        const float r = std::max(selectionStartX_, selectionEndX_);
+        const float t = std::min(selectionStartY_, selectionEndY_);
+        const float b = std::max(selectionStartY_, selectionEndY_);
+        const float worldL = l + cameraX_;
+        const float worldR = r + cameraX_;
+        const float worldT = t + cameraY_;
+        const float worldB = b + cameraY_;
+
+        const bool tiny = (r - l) < 6.0f && (b - t) < 6.0f;
+        if (tiny) {
+            int hit = -1;
+            float best = 18.0f * 18.0f;
+            const float wx = selectionEndX_ + cameraX_;
+            const float wy = selectionEndY_ + cameraY_;
+            for (int i = 0; i < static_cast<int>(units_.size()); ++i) {
+                const float d = distanceSquared(wx, wy, units_[i].x, units_[i].y);
+                if (d < best) {
+                    best = d;
+                    hit = i;
+                }
+            }
+            for (auto& unit : units_) unit.selected = false;
+            if (hit >= 0) units_[hit].selected = true;
             return;
         }
 
-        int order = 0;
         for (auto& unit : units_) {
-            if (!unit.selected) {
-                continue;
-            }
-            const int column = order % 3;
-            const int row = order / 3;
-            unit.targetX = x + static_cast<float>(column - 1) * 30.0f;
-            unit.targetY = y + static_cast<float>(row) * 30.0f;
+            unit.selected = inside(unit.x, unit.y, worldL, worldT, worldR, worldB);
+        }
+    }
+
+    void issueMoveCommand(float worldX, float worldY)
+    {
+        std::size_t selectedCount = 0;
+        for (const auto& unit : units_) if (unit.selected) ++selectedCount;
+        if (selectedCount == 0) return;
+
+        const int columns = std::max(1, static_cast<int>(std::sqrt(static_cast<float>(selectedCount))));
+        std::size_t order = 0;
+        for (auto& unit : units_) {
+            if (!unit.selected) continue;
+            const int col = static_cast<int>(order % static_cast<std::size_t>(columns));
+            const int row = static_cast<int>(order / static_cast<std::size_t>(columns));
+            unit.targetX = clampf(worldX + (col - columns / 2) * 9.0f, 5.0f, worldWidth_ - 5.0f);
+            unit.targetY = clampf(worldY + row * 9.0f, 5.0f, worldHeight_ - 5.0f);
             ++order;
         }
     }
 
+    void drawWorld(ra::Engine& engine, float mapRight, float height)
+    {
+        constexpr float tile = 64.0f;
+        const int firstX = static_cast<int>(cameraX_ / tile);
+        const int firstY = static_cast<int>(cameraY_ / tile);
+        const int lastX = firstX + static_cast<int>(mapRight / tile) + 2;
+        const int lastY = firstY + static_cast<int>(height / tile) + 2;
+
+        for (int gy = firstY; gy < lastY; ++gy) {
+            for (int gx = firstX; gx < lastX; ++gx) {
+                const float sx = gx * tile - cameraX_;
+                const float sy = gy * tile - cameraY_;
+                const bool alternate = ((gx + gy) & 1) != 0;
+                engine.fillRect({sx, sy, tile - 1.0f, tile - 1.0f},
+                    alternate ? ra::Color{48, 66, 45, 255} : ra::Color{43, 60, 41, 255});
+            }
+        }
+
+        // Large terrain features force significant overdraw and make camera motion obvious.
+        engine.fillRect({200.0f - cameraX_, 1250.0f - cameraY_, 3200.0f, 120.0f}, {83, 76, 61, 255});
+        engine.fillRect({2450.0f - cameraX_, 180.0f - cameraY_, 180.0f, 2050.0f}, {31, 65, 82, 255});
+        engine.fillRect({980.0f - cameraX_, 460.0f - cameraY_, 640.0f, 460.0f}, {58, 72, 43, 255});
+    }
+
+    void drawUnits(ra::Engine& engine, float mapRight, float height)
+    {
+        for (const auto& unit : units_) {
+            const float x = unit.x - cameraX_;
+            const float y = unit.y - cameraY_;
+            if (x < -8.0f || y < -8.0f || x > mapRight + 8.0f || y > height + 8.0f) continue;
+
+            if (unit.selected) {
+                engine.fillRect({x - 4.0f, y - 4.0f, 8.0f, 8.0f}, {95, 234, 118, 255});
+            } else {
+                engine.fillRect({x - 2.0f, y - 2.0f, 4.0f, 4.0f}, {199, 204, 181, 255});
+            }
+        }
+    }
+
+    void drawSelection(ra::Engine& engine)
+    {
+        if (!draggingSelection_) return;
+        const float l = std::min(selectionStartX_, selectionEndX_);
+        const float r = std::max(selectionStartX_, selectionEndX_);
+        const float t = std::min(selectionStartY_, selectionEndY_);
+        const float b = std::max(selectionStartY_, selectionEndY_);
+        engine.drawRect({l, t, r - l, b - t}, {93, 230, 116, 255});
+    }
+
+    void drawHud(ra::Engine& engine, float hudWidth, float hudXValue, float height)
+    {
+        engine.fillRect({hudXValue, 0.0f, hudWidth, height}, {17, 23, 28, 255});
+        engine.fillRect({hudXValue + 14.0f, 14.0f, hudWidth - 28.0f, 58.0f}, {27, 37, 44, 255});
+
+        if (hudBar_) {
+            engine.drawTexture(hudBar_, {hudXValue + 24.0f, 28.0f, hudWidth - 48.0f, 28.0f});
+        }
+
+        // Four load-level indicators. The active one is bright.
+        for (int i = 0; i < 4; ++i) {
+            const bool active = static_cast<std::size_t>(i) == stressIndex_;
+            engine.fillRect({hudXValue + 24.0f, 96.0f + i * 42.0f, 252.0f, 28.0f},
+                active ? ra::Color{64, 159, 83, 255} : ra::Color{45, 55, 61, 255});
+        }
+
+        std::size_t selectedCount = 0;
+        for (const auto& unit : units_) if (unit.selected) ++selectedCount;
+
+        // Load meter: 25k entities = full bar.
+        const float entityRatio = clampf(static_cast<float>(units_.size()) / 25000.0f, 0.0f, 1.0f);
+        engine.fillRect({hudXValue + 24.0f, 286.0f, 252.0f, 18.0f}, {40, 47, 52, 255});
+        engine.fillRect({hudXValue + 24.0f, 286.0f, 252.0f * entityRatio, 18.0f}, {79, 151, 216, 255});
+
+        // Frame-time meter: full at 33.3ms.
+        const float frameRatio = clampf(smoothedFrameMs_ / 33.3f, 0.0f, 1.0f);
+        engine.fillRect({hudXValue + 24.0f, 322.0f, 252.0f, 18.0f}, {40, 47, 52, 255});
+        engine.fillRect({hudXValue + 24.0f, 322.0f, 252.0f * frameRatio, 18.0f},
+            frameRatio < 0.5f ? ra::Color{82, 186, 98, 255} : ra::Color{220, 139, 60, 255});
+
+        // Peak-frame meter: full at 66ms.
+        const float peakRatio = clampf(peakFrameMs_ / 66.0f, 0.0f, 1.0f);
+        engine.fillRect({hudXValue + 24.0f, 358.0f, 252.0f, 18.0f}, {40, 47, 52, 255});
+        engine.fillRect({hudXValue + 24.0f, 358.0f, 252.0f * peakRatio, 18.0f}, {204, 78, 68, 255});
+
+        // Selection ratio meter.
+        const float selectedRatio = units_.empty() ? 0.0f : static_cast<float>(selectedCount) / static_cast<float>(units_.size());
+        engine.fillRect({hudXValue + 24.0f, 394.0f, 252.0f, 18.0f}, {40, 47, 52, 255});
+        engine.fillRect({hudXValue + 24.0f, 394.0f, 252.0f * selectedRatio, 18.0f}, {114, 223, 141, 255});
+
+        // Camera position minimap.
+        const float miniX = hudXValue + 24.0f;
+        const float miniY = 446.0f;
+        const float miniW = 252.0f;
+        const float miniH = 156.0f;
+        engine.fillRect({miniX, miniY, miniW, miniH}, {35, 52, 39, 255});
+        const float cameraMarkerX = miniX + (cameraX_ / worldWidth_) * miniW;
+        const float cameraMarkerY = miniY + (cameraY_ / worldHeight_) * miniH;
+        const float cameraMarkerW = std::max(8.0f, (viewWidth(engine) / worldWidth_) * miniW);
+        const float cameraMarkerH = std::max(8.0f, (viewHeight(engine) / worldHeight_) * miniH);
+        engine.drawRect({cameraMarkerX, cameraMarkerY, cameraMarkerW, cameraMarkerH}, {224, 226, 201, 255});
+    }
+
+    static constexpr std::array<std::size_t, 4> stressLevels_{1000, 5000, 10000, 25000};
+    std::size_t stressIndex_{0};
     std::vector<Unit> units_;
     ra::Texture hudBar_{};
-    bool showGrid_{true};
+
+    float worldWidth_{4200.0f};
+    float worldHeight_{2600.0f};
+    float cameraX_{0.0f};
+    float cameraY_{0.0f};
+    float wanderPhase_{0.0f};
+
+    bool draggingSelection_{false};
+    float selectionStartX_{0.0f};
+    float selectionStartY_{0.0f};
+    float selectionEndX_{0.0f};
+    float selectionEndY_{0.0f};
+
+    float smoothedFrameMs_{0.0f};
+    float peakFrameMs_{0.0f};
 };
 
 int main()
 {
     try {
         ra::EngineConfig config;
-        config.title = "RA Framework - Minimal RTS Test";
-        config.width = 1280;
-        config.height = 720;
+        config.title = "RA Framework - RTS Stress Test";
+        config.width = 1440;
+        config.height = 900;
         config.resizable = true;
         config.vsync = true;
 
