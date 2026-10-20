@@ -11,7 +11,12 @@ target_include_directories(ra_engine
 )
 
 target_compile_features(ra_engine PUBLIC cxx_std_17)
-target_link_libraries(ra_engine PUBLIC SDL3::SDL3-static SDL3_image::SDL3_image-static ws2_32)
+
+if(WIN32)
+    target_link_libraries(ra_engine PUBLIC SDL3::SDL3-static SDL3_image::SDL3_image-static ws2_32)
+else()
+    target_link_libraries(ra_engine PUBLIC SDL3::SDL3-static SDL3_image::SDL3_image-static)
+endif()
 
 if(MSVC)
     target_compile_options(ra_engine PRIVATE /W4 /permissive-)
@@ -26,6 +31,9 @@ if(RA_BUILD_SANDBOX)
         ${CMAKE_SOURCE_DIR}/examples/stress_app.cpp
     )
     target_link_libraries(ra_sandbox PRIVATE RA::Engine)
+    if(WIN32)
+        target_link_libraries(ra_sandbox PRIVATE user32)
+    endif()
     set_target_properties(ra_sandbox PROPERTIES
         OUTPUT_NAME "ra_sandbox"
     )
