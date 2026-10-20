@@ -26,18 +26,24 @@ constexpr std::size_t mouseIndex(MouseButton button)
 SDL_Scancode toScancode(Key key)
 {
     switch (key) {
-    case Key::Escape: return SDL_SCANCODE_ESCAPE;
-    case Key::Space:  return SDL_SCANCODE_SPACE;
-    case Key::Enter:  return SDL_SCANCODE_RETURN;
-    case Key::Up:     return SDL_SCANCODE_UP;
-    case Key::Down:   return SDL_SCANCODE_DOWN;
-    case Key::Left:   return SDL_SCANCODE_LEFT;
-    case Key::Right:  return SDL_SCANCODE_RIGHT;
-    case Key::W:      return SDL_SCANCODE_W;
-    case Key::A:      return SDL_SCANCODE_A;
-    case Key::S:      return SDL_SCANCODE_S;
-    case Key::D:      return SDL_SCANCODE_D;
-    case Key::Count:  break;
+    case Key::Escape:       return SDL_SCANCODE_ESCAPE;
+    case Key::Space:        return SDL_SCANCODE_SPACE;
+    case Key::Enter:        return SDL_SCANCODE_RETURN;
+    case Key::Up:           return SDL_SCANCODE_UP;
+    case Key::Down:         return SDL_SCANCODE_DOWN;
+    case Key::Left:         return SDL_SCANCODE_LEFT;
+    case Key::Right:        return SDL_SCANCODE_RIGHT;
+    case Key::W:            return SDL_SCANCODE_W;
+    case Key::A:            return SDL_SCANCODE_A;
+    case Key::S:            return SDL_SCANCODE_S;
+    case Key::D:            return SDL_SCANCODE_D;
+    case Key::Q:            return SDL_SCANCODE_Q;
+    case Key::E:            return SDL_SCANCODE_E;
+    case Key::LeftShift:    return SDL_SCANCODE_LSHIFT;
+    case Key::RightShift:   return SDL_SCANCODE_RSHIFT;
+    case Key::LeftControl:  return SDL_SCANCODE_LCTRL;
+    case Key::RightControl: return SDL_SCANCODE_RCTRL;
+    case Key::Count:        break;
     }
     return SDL_SCANCODE_UNKNOWN;
 }
@@ -86,25 +92,17 @@ struct Engine::Impl {
             SDL_SetRenderVSync(renderer, 1);
         }
 
-        textures.push_back(nullptr); // id 0 is always invalid.
+        textures.push_back(nullptr);
     }
 
     ~Impl()
     {
         for (SDL_Texture* texture : textures) {
-            if (texture) {
-                SDL_DestroyTexture(texture);
-            }
+            if (texture) SDL_DestroyTexture(texture);
         }
-        if (renderer) {
-            SDL_DestroyRenderer(renderer);
-        }
-        if (window) {
-            SDL_DestroyWindow(window);
-        }
-        if (sdlInitialized) {
-            SDL_Quit();
-        }
+        if (renderer) SDL_DestroyRenderer(renderer);
+        if (window) SDL_DestroyWindow(window);
+        if (sdlInitialized) SDL_Quit();
     }
 
     EngineConfig config;
@@ -115,6 +113,7 @@ struct Engine::Impl {
     float delta{0.0f};
     float mouseX{0.0f};
     float mouseY{0.0f};
+    float wheelY{0.0f};
     std::array<bool, keyIndex(Key::Count)> currentKeys{};
     std::array<bool, keyIndex(Key::Count)> previousKeys{};
     std::array<bool, mouseIndex(MouseButton::Count)> currentMouse{};
@@ -141,6 +140,7 @@ int Engine::run(Game& game)
     while (impl_->running) {
         impl_->previousKeys = impl_->currentKeys;
         impl_->previousMouse = impl_->currentMouse;
+        impl_->wheelY = 0.0f;
 
         SDL_Event event{};
         while (SDL_PollEvent(&event)) {
@@ -164,6 +164,10 @@ int Engine::run(Game& game)
                 impl_->mouseY = event.motion.y;
             }
 
+            if (event.type == SDL_EVENT_MOUSE_WHEEL) {
+                impl_->wheelY += event.wheel.y;
+            }
+
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN || event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
                 impl_->mouseX = event.button.x;
                 impl_->mouseY = event.button.y;
@@ -177,9 +181,7 @@ int Engine::run(Game& game)
         const auto now = std::chrono::steady_clock::now();
         impl_->delta = std::chrono::duration<float>(now - previous).count();
         previous = now;
-        if (impl_->delta > 0.25f) {
-            impl_->delta = 0.25f;
-        }
+        if (impl_->delta > 0.25f) impl_->delta = 0.25f;
 
         game.onUpdate(*this, impl_->delta);
         game.onRender(*this);
@@ -223,6 +225,11 @@ float Engine::mouseY() const
     return impl_->mouseY;
 }
 
+float Engine::mouseWheelY() const
+{
+    return impl_->wheelY;
+}
+
 bool Engine::mouseDown(MouseButton button) const
 {
     const auto index = mouseIndex(button);
@@ -262,6 +269,12 @@ float Engine::deltaSeconds() const
     return impl_->delta;
 }
 
+void Engine::setWindowTitle(const std::string& title)
+{
+    impl_->config.title = title;
+    SDL_SetWindowTitle(impl_->window, title.c_str());
+}
+
 void Engine::clear(Color color)
 {
     SDL_SetRenderDrawColor(impl_->renderer, color.r, color.g, color.b, color.a);
@@ -280,6 +293,12 @@ void Engine::drawRect(Rect rect, Color color)
     SDL_SetRenderDrawColor(impl_->renderer, color.r, color.g, color.b, color.a);
     const SDL_FRect sdlRect{rect.x, rect.y, rect.w, rect.h};
     SDL_RenderRect(impl_->renderer, &sdlRect);
+}
+
+void Engine::drawLine(float x1, float y1, float x2, float y2, Color color)
+{
+    SDL_SetRenderDrawColor(impl_->renderer, color.r, color.g, color.b, color.a);
+    SDL_RenderLine(impl_->renderer, x1, y1, x2, y2);
 }
 
 Texture Engine::createTextureRGBA(const unsigned char* rgba, int width, int height)
@@ -352,14 +371,10 @@ void Engine::destroyTexture(Texture& texture)
 
 void Engine::drawTexture(const Texture& texture, Rect destination)
 {
-    if (!texture || texture.id >= impl_->textures.size()) {
-        return;
-    }
+    if (!texture || texture.id >= impl_->textures.size()) return;
 
     SDL_Texture* native = impl_->textures[texture.id];
-    if (!native) {
-        return;
-    }
+    if (!native) return;
 
     const SDL_FRect dst{destination.x, destination.y, destination.w, destination.h};
     SDL_RenderTexture(impl_->renderer, native, nullptr, &dst);
