@@ -15,6 +15,14 @@ if not defined MWZIP if exist "%USERPROFILE%\Downloads\mystic_woods_free_2.2.zip
 if not defined MWZIP if exist "%USERPROFILE%\Desktop\mystic_woods_free_2.2.zip" set "MWZIP=%USERPROFILE%\Desktop\mystic_woods_free_2.2.zip"
 if defined MWZIP call :import_mystic
 
+rem El editor integrado exige el pack completo, no vuelve a la paleta reducida.
+if not exist "assets\mystic\tilesets\water-sheet.png" goto :full_pack_error
+if not exist "assets\mystic\tilesets\decor_8x8.png" goto :full_pack_error
+if not exist "assets\mystic\objects\objects.png" goto :full_pack_error
+if not exist "assets\mystic\objects\chest_02.png" goto :full_pack_error
+if not exist "assets\mystic\characters\skeleton.png" goto :full_pack_error
+if not exist "assets\mystic\characters\skeleton_swordless.png" goto :full_pack_error
+
 rem Restaura los assets base versionados si alguien los borro localmente.
 if not exist "assets\mystic\plains.png" goto :restore_assets
 if not exist "assets\mystic\characters\player.png" goto :restore_assets
@@ -103,6 +111,11 @@ if exist "assets\mystic\tilesets\floors\wooden.png" copy /y "assets\mystic\tiles
 if exist "assets\mystic\tilesets\walls\walls.png" copy /y "assets\mystic\tilesets\walls\walls.png" "assets\mystic\tilesets\walls.png" >nul
 rmdir /s /q "%MWTMP%" >nul 2>nul
 exit /b 0
+
+:full_pack_error
+echo ERROR: falta el pack completo Mystic Woods 2.2.
+echo Deja mystic_woods_free_2.2.zip en la carpeta del repo, Downloads o Desktop y ejecuta build.cmd otra vez.
+exit /b 1
 
 :asset_error
 echo ERROR: faltan assets Mystic Woods base. Ejecuta git pull nuevamente.
