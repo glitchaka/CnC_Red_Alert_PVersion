@@ -61,8 +61,6 @@ if not exist "assets\mystic\objects\chest_01.png" goto :asset_error
 
 powershell -NoProfile -ExecutionPolicy Bypass -File "tools\prepare_game.ps1"
 if errorlevel 1 goto :error
-powershell -NoProfile -ExecutionPolicy Bypass -File "tools\fit_editor_sheets.ps1"
-if errorlevel 1 goto :error
 
 if exist "RA-Framework.exe" del /q "RA-Framework.exe" >nul 2>nul
 if exist "RA-Framework-error.txt" del /q "RA-Framework-error.txt" >nul 2>nul
