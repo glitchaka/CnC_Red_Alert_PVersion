@@ -8,6 +8,43 @@ if errorlevel 1 (
     exit /b 1
 )
 
+rem Los assets originales estan versionados en este mismo repositorio.
+rem Si una compilacion anterior los borro del working tree, recuperarlos automaticamente.
+if not exist "assets\mystic\plains.png" goto :restore_assets
+if not exist "assets\bit-bonanza\People.png" goto :restore_assets
+if not exist "assets\bit-bonanza\UI.png" goto :restore_assets
+if not exist "assets\bit-bonanza\Misc-Future.png" goto :restore_assets
+goto :assets_ready
+
+:restore_assets
+where git >nul 2>nul
+if errorlevel 1 (
+    echo ERROR: faltan assets versionados y git no esta disponible para restaurarlos.
+    exit /b 1
+)
+git restore --source=HEAD -- "assets/mystic/plains.png" "assets/bit-bonanza/People.png" "assets/bit-bonanza/UI.png" "assets/bit-bonanza/Misc-Future.png" >nul 2>nul
+if errorlevel 1 (
+    git checkout HEAD -- "assets/mystic/plains.png" "assets/bit-bonanza/People.png" "assets/bit-bonanza/UI.png" "assets/bit-bonanza/Misc-Future.png" >nul 2>nul
+)
+
+:assets_ready
+if not exist "assets\mystic\plains.png" (
+    echo ERROR: no se pudo restaurar assets\mystic\plains.png desde el repositorio.
+    exit /b 1
+)
+if not exist "assets\bit-bonanza\People.png" (
+    echo ERROR: no se pudo restaurar People.png de Bit Bonanza desde el repositorio.
+    exit /b 1
+)
+if not exist "assets\bit-bonanza\UI.png" (
+    echo ERROR: no se pudo restaurar UI.png de Bit Bonanza desde el repositorio.
+    exit /b 1
+)
+if not exist "assets\bit-bonanza\Misc-Future.png" (
+    echo ERROR: no se pudo restaurar Misc-Future.png de Bit Bonanza desde el repositorio.
+    exit /b 1
+)
+
 if exist "RA-Framework.exe" del /q "RA-Framework.exe" >nul 2>nul
 if exist "build\bin\Release\assets" rmdir /s /q "build\bin\Release\assets" >nul 2>nul
 
@@ -23,15 +60,6 @@ if not exist "build\bin\Release\ra_sandbox.exe" (
 )
 
 copy /y "build\bin\Release\ra_sandbox.exe" "RA-Framework.exe" >nul
-
-if not exist "assets\mystic\plains.png" (
-    echo ERROR: falta assets\mystic\plains.png. Ejecuta git pull nuevamente.
-    exit /b 1
-)
-if not exist "assets\bit-bonanza\People.png" (
-    echo ERROR: faltan los assets originales de Bit Bonanza.
-    exit /b 1
-)
 
 echo.
 echo LISTO: %CD%\RA-Framework.exe
