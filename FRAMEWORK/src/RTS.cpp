@@ -108,6 +108,18 @@ void World::clear()
     nextId_ = 1;
 }
 
+void World::replaceUnits(const std::vector<Unit>& units)
+{
+    units_ = units;
+    nextId_ = 1;
+    for (auto& unit : units_) {
+        unit.position = clampToBounds(unit.position, unit.radius);
+        unit.destination = clampToBounds(unit.destination, unit.radius);
+        unit.home = clampToBounds(unit.home, unit.radius);
+        nextId_ = std::max(nextId_, unit.id + 1);
+    }
+}
+
 void World::setAutonomous(UnitId id, bool enabled, float patrolRadius)
 {
     Unit* unit = find(id);
