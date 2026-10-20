@@ -9,7 +9,6 @@ if errorlevel 1 (
 )
 
 rem Los assets originales estan versionados en este mismo repositorio.
-rem Si una compilacion anterior los borro del working tree, recuperarlos automaticamente.
 if not exist "assets\mystic\plains.png" goto :restore_assets
 if not exist "assets\bit-bonanza\People.png" goto :restore_assets
 if not exist "assets\bit-bonanza\UI.png" goto :restore_assets
@@ -46,10 +45,13 @@ if not exist "assets\bit-bonanza\Misc-Future.png" (
 )
 
 if exist "RA-Framework.exe" del /q "RA-Framework.exe" >nul 2>nul
-if exist "build\bin\Release\assets" rmdir /s /q "build\bin\Release\assets" >nul 2>nul
+if exist "RA-Framework-error.txt" del /q "RA-Framework-error.txt" >nul 2>nul
 
-cmake -S . -B build -A x64
-if errorlevel 1 goto :error
+rem Solo configurar desde cero si aun no existe el cache local.
+if not exist "build\CMakeCache.txt" (
+    cmake -S . -B build -A x64
+    if errorlevel 1 goto :error
+)
 
 cmake --build build --config Release --target ra_sandbox --parallel
 if errorlevel 1 goto :error
@@ -63,7 +65,7 @@ copy /y "build\bin\Release\ra_sandbox.exe" "RA-Framework.exe" >nul
 
 echo.
 echo LISTO: %CD%\RA-Framework.exe
-start "" "%CD%\RA-Framework.exe"
+start "" /D "%CD%" "%CD%\RA-Framework.exe"
 exit /b 0
 
 :error
