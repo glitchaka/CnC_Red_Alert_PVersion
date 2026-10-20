@@ -8,11 +8,13 @@ if errorlevel 1 (
     exit /b 1
 )
 
-rem Los assets originales estan versionados en este mismo repositorio.
+rem Los assets Mystic Woods usados por el juego estan versionados en el repositorio.
 if not exist "assets\mystic\plains.png" goto :restore_assets
-if not exist "assets\bit-bonanza\People.png" goto :restore_assets
-if not exist "assets\bit-bonanza\UI.png" goto :restore_assets
-if not exist "assets\bit-bonanza\Misc-Future.png" goto :restore_assets
+if not exist "assets\mystic\characters\player.png" goto :restore_assets
+if not exist "assets\mystic\characters\slime.png" goto :restore_assets
+if not exist "assets\mystic\tilesets\grass.png" goto :restore_assets
+if not exist "assets\mystic\tilesets\fences.png" goto :restore_assets
+if not exist "assets\mystic\tilesets\walls.png" goto :restore_assets
 goto :assets_ready
 
 :restore_assets
@@ -21,33 +23,22 @@ if errorlevel 1 (
     echo ERROR: faltan assets versionados y git no esta disponible para restaurarlos.
     exit /b 1
 )
-git restore --source=HEAD -- "assets/mystic/plains.png" "assets/bit-bonanza/People.png" "assets/bit-bonanza/UI.png" "assets/bit-bonanza/Misc-Future.png" >nul 2>nul
+git restore --source=HEAD -- "assets/mystic/plains.png" "assets/mystic/characters/player.png" "assets/mystic/characters/slime.png" "assets/mystic/tilesets/grass.png" "assets/mystic/tilesets/fences.png" "assets/mystic/tilesets/walls.png" >nul 2>nul
 if errorlevel 1 (
-    git checkout HEAD -- "assets/mystic/plains.png" "assets/bit-bonanza/People.png" "assets/bit-bonanza/UI.png" "assets/bit-bonanza/Misc-Future.png" >nul 2>nul
+    git checkout HEAD -- "assets/mystic/plains.png" "assets/mystic/characters/player.png" "assets/mystic/characters/slime.png" "assets/mystic/tilesets/grass.png" "assets/mystic/tilesets/fences.png" "assets/mystic/tilesets/walls.png" >nul 2>nul
 )
 
 :assets_ready
-if not exist "assets\mystic\plains.png" (
-    echo ERROR: no se pudo restaurar assets\mystic\plains.png desde el repositorio.
-    exit /b 1
-)
-if not exist "assets\bit-bonanza\People.png" (
-    echo ERROR: no se pudo restaurar People.png de Bit Bonanza desde el repositorio.
-    exit /b 1
-)
-if not exist "assets\bit-bonanza\UI.png" (
-    echo ERROR: no se pudo restaurar UI.png de Bit Bonanza desde el repositorio.
-    exit /b 1
-)
-if not exist "assets\bit-bonanza\Misc-Future.png" (
-    echo ERROR: no se pudo restaurar Misc-Future.png de Bit Bonanza desde el repositorio.
-    exit /b 1
-)
+if not exist "assets\mystic\plains.png" goto :asset_error
+if not exist "assets\mystic\characters\player.png" goto :asset_error
+if not exist "assets\mystic\characters\slime.png" goto :asset_error
+if not exist "assets\mystic\tilesets\grass.png" goto :asset_error
+if not exist "assets\mystic\tilesets\fences.png" goto :asset_error
+if not exist "assets\mystic\tilesets\walls.png" goto :asset_error
 
 if exist "RA-Framework.exe" del /q "RA-Framework.exe" >nul 2>nul
 if exist "RA-Framework-error.txt" del /q "RA-Framework-error.txt" >nul 2>nul
 
-rem Solo configurar desde cero si aun no existe el cache local.
 if not exist "build\CMakeCache.txt" (
     cmake -S . -B build -A x64
     if errorlevel 1 goto :error
@@ -67,6 +58,10 @@ echo.
 echo LISTO: %CD%\RA-Framework.exe
 start "" /D "%CD%" "%CD%\RA-Framework.exe"
 exit /b 0
+
+:asset_error
+echo ERROR: faltan assets Mystic Woods versionados. Ejecuta git pull nuevamente.
+exit /b 1
 
 :error
 echo.
