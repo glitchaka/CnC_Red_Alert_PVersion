@@ -72,6 +72,10 @@ public:
     void clear();
     void update(float dt);
 
+    // Replaces the simulation state with an authoritative snapshot.
+    // Intended for LAN clients following a host-authoritative simulation.
+    void replaceUnits(const std::vector<Unit>& units);
+
     void setAutonomous(UnitId id, bool enabled, float patrolRadius = 110.0f);
     void setAllAutonomous(bool enabled, float patrolRadius = 110.0f);
 
