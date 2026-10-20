@@ -9,7 +9,7 @@ on:
       - 'build.cmd'
       - 'FRAMEWORK/**'
       - 'examples/**'
-      - 'assets/**'
+      - 'assets/click-command/**'
       - '.github/workflows/build-self.yml'
 
 jobs:
@@ -31,7 +31,6 @@ jobs:
           name: RedAlert-Framework-Windows-x64
           path: |
             build/bin/Release/ra_sandbox.exe
-            assets/**
+            build/bin/Release/assets/**
             build/lib/Release/ra_engine.lib
             FRAMEWORK/include/**
-          if-no-files-found: error
