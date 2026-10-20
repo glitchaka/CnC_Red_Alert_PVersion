@@ -14,15 +14,8 @@ namespace {
 constexpr std::size_t keyCount = static_cast<std::size_t>(Key::Count);
 constexpr std::size_t mouseButtonCount = static_cast<std::size_t>(MouseButton::Count);
 
-std::size_t keyIndex(Key key)
-{
-    return static_cast<std::size_t>(key);
-}
-
-std::size_t mouseButtonIndex(MouseButton button)
-{
-    return static_cast<std::size_t>(button);
-}
+std::size_t keyIndex(Key key) { return static_cast<std::size_t>(key); }
+std::size_t mouseButtonIndex(MouseButton button) { return static_cast<std::size_t>(button); }
 
 SDL_Scancode toScancode(Key key)
 {
@@ -79,23 +72,15 @@ struct Engine::Impl {
     std::vector<SDL_Texture*> textures{nullptr};
 };
 
-Engine::Engine(EngineConfig config)
-    : impl_(std::make_unique<Impl>())
+Engine::Engine(EngineConfig config) : impl_(std::make_unique<Impl>())
 {
     impl_->config = std::move(config);
-
-    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO)) {
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO))
         throw std::runtime_error(std::string("SDL_Init failed: ") + SDL_GetError());
-    }
 
     SDL_WindowFlags flags = 0;
     if (impl_->config.resizable) flags |= SDL_WINDOW_RESIZABLE;
-
-    impl_->window = SDL_CreateWindow(
-        impl_->config.title.c_str(),
-        impl_->config.width,
-        impl_->config.height,
-        flags);
+    impl_->window = SDL_CreateWindow(impl_->config.title.c_str(), impl_->config.width, impl_->config.height, flags);
     if (!impl_->window) {
         SDL_Quit();
         throw std::runtime_error(std::string("SDL_CreateWindow failed: ") + SDL_GetError());
@@ -108,7 +93,6 @@ Engine::Engine(EngineConfig config)
         SDL_Quit();
         throw std::runtime_error(std::string("SDL_CreateRenderer failed: ") + SDL_GetError());
     }
-
     SDL_SetRenderVSync(impl_->renderer, impl_->config.vsync ? 1 : 0);
     SDL_SetRenderDrawBlendMode(impl_->renderer, SDL_BLENDMODE_BLEND);
 }
@@ -116,9 +100,7 @@ Engine::Engine(EngineConfig config)
 Engine::~Engine()
 {
     if (!impl_) return;
-    for (SDL_Texture* texture : impl_->textures) {
-        if (texture) SDL_DestroyTexture(texture);
-    }
+    for (SDL_Texture* texture : impl_->textures) if (texture) SDL_DestroyTexture(texture);
     impl_->textures.clear();
     if (impl_->renderer) SDL_DestroyRenderer(impl_->renderer);
     if (impl_->window) SDL_DestroyWindow(impl_->window);
@@ -153,17 +135,15 @@ int Engine::run(Game& game)
         }
 
         const SDL_MouseButtonFlags mouseState = SDL_GetMouseState(&impl_->mouseX, &impl_->mouseY);
-        for (std::size_t i = 0; i < mouseButtonCount; ++i) {
+        for (std::size_t i = 0; i < mouseButtonCount; ++i)
             impl_->mouseButtons[i] = (mouseState & toSdlMouseButton(static_cast<MouseButton>(i))) != 0;
-        }
 
         const std::uint64_t now = SDL_GetTicks();
         impl_->deltaSeconds = static_cast<float>(now - impl_->lastTicks) / 1000.0f;
         impl_->lastTicks = now;
         if (impl_->deltaSeconds > 0.1f) impl_->deltaSeconds = 0.1f;
 
-        int width = 0;
-        int height = 0;
+        int width = 0, height = 0;
         SDL_GetWindowSizeInPixels(impl_->window, &width, &height);
         impl_->config.width = width;
         impl_->config.height = height;
@@ -178,7 +158,6 @@ int Engine::run(Game& game)
 }
 
 void Engine::quit() { impl_->running = false; }
-
 bool Engine::keyDown(Key key) const { return impl_->keys[keyIndex(key)]; }
 bool Engine::keyPressed(Key key) const { return impl_->keys[keyIndex(key)] && !impl_->previousKeys[keyIndex(key)]; }
 bool Engine::keyReleased(Key key) const { return !impl_->keys[keyIndex(key)] && impl_->previousKeys[keyIndex(key)]; }
@@ -237,38 +216,49 @@ Texture Engine::createTextureRGBA(const unsigned char* rgba, int width, int heig
     SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
     SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
     impl_->textures.push_back(texture);
-    return Texture{static_cast<std::uint32_t>(impl_->textures.size()-1),width,height};
+    return Texture{static_cast<std::uint32_t>(impl_->textures.size()-1), width, height};
 }
 
 Texture Engine::loadTexture(const std::string& path)
 {
     SDL_Texture* texture = IMG_LoadTexture(impl_->renderer, path.c_str());
-    if (!texture) throw std::runtime_error(std::string("IMG_LoadTexture failed for '")+path+"': "+SDL_GetError());
-    float width=0,height=0;
-    if (!SDL_GetTextureSize(texture,&width,&height)) {
-        const std::string error=SDL_GetError(); SDL_DestroyTexture(texture);
-        throw std::runtime_error(std::string("SDL_GetTextureSize failed: ")+error);
+    if (!texture) throw std::runtime_error(std::string("IMG_LoadTexture failed for '") + path + "': " + SDL_GetError());
+    float width = 0, height = 0;
+    if (!SDL_GetTextureSize(texture, &width, &height)) {
+        const std::string error = SDL_GetError(); SDL_DestroyTexture(texture);
+        throw std::runtime_error(std::string("SDL_GetTextureSize failed: ") + error);
     }
     SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
     SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
     impl_->textures.push_back(texture);
-    return Texture{static_cast<std::uint32_t>(impl_->textures.size()-1),static_cast<int>(width),static_cast<int>(height)};
+    return Texture{static_cast<std::uint32_t>(impl_->textures.size()-1), static_cast<int>(width), static_cast<int>(height)};
 }
 
 void Engine::destroyTexture(Texture& texture)
 {
-    if (!texture || texture.id >= impl_->textures.size()) { texture={}; return; }
-    SDL_Texture*& native=impl_->textures[texture.id];
-    if(native){ SDL_DestroyTexture(native); native=nullptr; }
-    texture={};
+    if (!texture || texture.id >= impl_->textures.size()) { texture = {}; return; }
+    SDL_Texture*& native = impl_->textures[texture.id];
+    if (native) { SDL_DestroyTexture(native); native = nullptr; }
+    texture = {};
 }
 
 void Engine::drawTexture(const Texture& texture, Rect destination)
 {
     if (!texture || texture.id >= impl_->textures.size()) return;
-    SDL_Texture* native=impl_->textures[texture.id]; if(!native) return;
-    const SDL_FRect dst{destination.x,destination.y,destination.w,destination.h};
-    SDL_RenderTexture(impl_->renderer,native,nullptr,&dst);
+    SDL_Texture* native = impl_->textures[texture.id];
+    if (!native) return;
+    const SDL_FRect dst{destination.x, destination.y, destination.w, destination.h};
+    SDL_RenderTexture(impl_->renderer, native, nullptr, &dst);
+}
+
+void Engine::drawTextureRegion(const Texture& texture, Rect source, Rect destination)
+{
+    if (!texture || texture.id >= impl_->textures.size()) return;
+    SDL_Texture* native = impl_->textures[texture.id];
+    if (!native) return;
+    const SDL_FRect src{source.x, source.y, source.w, source.h};
+    const SDL_FRect dst{destination.x, destination.y, destination.w, destination.h};
+    SDL_RenderTexture(impl_->renderer, native, &src, &dst);
 }
 
 const EngineConfig& Engine::config() const noexcept { return impl_->config; }
