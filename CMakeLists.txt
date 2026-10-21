@@ -6,7 +6,6 @@ if(NOT WIN32)
 endif()
 
 option(RA_BUILD_SANDBOX "Build the framework sandbox example" ON)
-option(RA_BUILD_ASSET_HUB "Build the native TGA/OBJ/MTL/BCH asset hub" ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -33,7 +32,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(SDL3)
 
-# SDL_image: PNG for the game assets and TGA for the native asset hub.
+# SDL_image: PNG loader for the real Mystic Woods / Bit Bonanza assets.
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(SDLIMAGE_INSTALL OFF CACHE BOOL "" FORCE)
 set(SDLIMAGE_SAMPLES OFF CACHE BOOL "" FORCE)
@@ -49,7 +48,7 @@ set(SDLIMAGE_PCX OFF CACHE BOOL "" FORCE)
 set(SDLIMAGE_PNM OFF CACHE BOOL "" FORCE)
 set(SDLIMAGE_QOI OFF CACHE BOOL "" FORCE)
 set(SDLIMAGE_SVG OFF CACHE BOOL "" FORCE)
-set(SDLIMAGE_TGA ON CACHE BOOL "" FORCE)
+set(SDLIMAGE_TGA OFF CACHE BOOL "" FORCE)
 set(SDLIMAGE_TIF OFF CACHE BOOL "" FORCE)
 set(SDLIMAGE_WEBP OFF CACHE BOOL "" FORCE)
 set(SDLIMAGE_XCF OFF CACHE BOOL "" FORCE)
