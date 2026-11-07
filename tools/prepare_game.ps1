@@ -126,5 +126,24 @@ Replace-Checked `
 'std::vector<MapCell>map_;std::vector<MapObject>mapObjects_;std::vector<MapBuilding>mapBuildings_;std::vector<MapUnit>mapUnits_;float editorCamX_{},editorCamY_{},editorZoom_{1},editorAnim_{};int editorSheet_{},editorSX_{},editorSY_{},editorEntity_{},editorOwner_{},editorPaletteScroll_{};EditorTab editorTab_{EditorTab::Terrain};' `
 'editor members'
 
+
+# Buildings are finished sprites, not repeated floor/wall/chest tiles.
+# Single source atlas: seven 160x160 sprites, in BuildingKind order.
+$completeBuildingArt = @'
+void drawBuildingArt(ra::Engine&e,BuildingKind kind,float x,float y,float scale){
+    const int index=static_cast<int>(kind);
+    if(!buildingSprites_ || index<0 || index>=7)return;
+    const float size=80.0f*scale;
+    e.drawTextureRegion(buildingSprites_,
+        {160.0f*index,0.0f,160.0f,160.0f},
+        {x-size*0.5f,y-size*0.62f,size,size});
+}
+'@
+Replace-Section 'void drawBuildingArt(' 'void drawUnitSprite(' $completeBuildingArt 'complete building sprites'
+Replace-Checked 'loadMap();localIp_=localIP();' 'buildingSprites_=load(e,"assets/click-command/structures.png");loadMap();localIp_=localIP();' 'building atlas load'
+Replace-Checked 'ra::Texture grass_,plains_' 'ra::Texture buildingSprites_;ra::Texture grass_,plains_' 'building atlas texture'
+Replace-Checked 'e.drawText(sx-42,sy-70*zoom_,n,' 'e.drawText(sx-42,sy-105*zoom_,n,' 'label above roof'
+Replace-Checked 'e.drawRect({sx-60*zoom_,sy-55*zoom_,120*zoom_,110*zoom_}' 'e.drawRect({sx-80*zoom_,sy-100*zoom_,160*zoom_,160*zoom_}' 'full-building selection box'
+
 Set-Content -LiteralPath $outPath -Value $src -Encoding UTF8
 Write-Host "Editor RTS integrado: tiles, objetos, construcciones y unidades animadas"
